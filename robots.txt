@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://portfel-9nxm.onrender.com/sitemap.xml
