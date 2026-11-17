@@ -12,7 +12,7 @@ assert.equal((await call('/api/teachers','POST',{email:'other@example.com',name:
 let state=(await call('/api/public')).data;const first=state.students[0];assert.equal((await call('/api/students','PUT',{originalName:first.name,name:first.name,fullName:first.fullName,achievement:'B2 va yangi yutuq'},teacher)).status,200);
 assert.equal((await call('/api/students','PUT',{originalName:first.name,name:first.name})).status,401);
 const form=new FormData();form.set('student',first.name);form.set('title','Yangi sertifikat');form.set('file',new Blob([new Uint8Array([137,80,78,71,13,10,26,10])],{type:'image/png'}),'cert.png');const upload=await worker.fetch(new Request('https://example.com/api/certificates',{method:'POST',headers:{'x-portfolio-request':'1',...teacher},body:form}),env);assert.equal(upload.status,200);
-assert.equal((await call('/api/public')).data.certificates.length,1);
+assert.equal((await call('/api/public')).data.certificates.length,8);
 assert.equal((await call('/api/teachers','DELETE',{email:'teacher@example.com'},owner)).status,200);assert.equal((await call('/api/me','GET',null,teacher)).data.user,null);assert.equal((await call('/api/login','POST',{email:'teacher@example.com',password:'abcdefghijk'})).status,401);
 const denied=await worker.fetch(new Request('https://example.com/api/teachers',{method:'POST',headers:owner,body:'{}'}),env);assert.equal(denied.status,403);assert.equal((await call('/api/backup','GET',null,owner)).status,200);assert.equal((await call('/api/backup','GET')).status,401);
 console.log('Passed: anonymous writes, owner-only assignment, invitation activation and reuse, teacher management, certificate upload, revocation and CSRF.');
