@@ -1,3 +1,4 @@
+import {entryAllowed,validPassword,teacherUnlocked,sessionToken,digest,nonce,entryCookie} from './gates.mjs';
 import fs from 'node:fs';
 const seed=JSON.parse(fs.readFileSync(new URL('./seed.json',import.meta.url),'utf8'));
 const OWNER='temurbekabdirashidovmu@gmail.com';
@@ -20,10 +21,20 @@ function addSession(state,email,tokenHash){state.sessions=state.sessions.filter(
 async function handle(req,env){const url=new URL(req.url),path=url.pathname;const origin=env.PORTFOLIO_ORIGIN||'https://sinfportfeli-kabinet.onrender.com';
  if(!['GET','HEAD'].includes(req.method)&&req.headers.get('x-portfolio-request')!=='1')fail('So‘rovga ruxsat berilmadi.',403);
  if(path==='/api/health')return json({ok:true});
+
+ if(path==='/api/entry-login'&&req.method==='POST'){
+  const b=await body(req),ip=req.headers.get('x-portfolio-client')||'unknown';const key='entry:'+digest(ip);
+  await mutate(env,s=>{s.attempts=s.attempts||{};const a=s.attempts[key];if(a&&a.until>Date.now()&&a.count>=20)fail('15 daqiqadan keyin qayta urinib ko‘ring.',429);s.attempts[key]={count:a?.until>Date.now()?a.count+1:1,until:Date.now()+900000}});
+  if(!validPassword(b.password,env.SITE_ENTRY_SALT,env.SITE_ENTRY_HASH))fail('Sayt paroli noto‘g‘ri.',401);
+  const token=nonce();await mutate(env,s=>{delete s.attempts[key];s.entries=(s.entries||[]).filter(x=>x.expires>Date.now());s.entries.push({hash:digest(token),expires:Date.now()+28800000})});return json({ok:true},200,{'Set-Cookie':entryCookie(token)})
+ }
+ if(!await entryAllowed(req,env))fail('Saytga kirish parolini kiriting.',401);
+ if(path==='/api/entry-logout'&&req.method==='POST'){const token=sessionToken(req,'portfolio_entry');await mutate(env,s=>{s.entries=(s.entries||[]).filter(x=>x.hash!==digest(token||''));const accountToken=sessionToken(req,'portfolio_session');if(accountToken)s.sessions=s.sessions.filter(x=>x.hash!==digest(accountToken))});return json({ok:true},200,{'Set-Cookie':'portfolio_entry=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax'})}
  const {state}=await read(env);const u=await identity(req,state);
+ 
  if(path==='/api/public'&&req.method==='GET')return json({students:state.students,certificates:state.certificates,teachers:state.teachers.filter(t=>t.active).map(t=>({name:t.name,subject:t.subject,active:!!t.passwordHash}))});
  if(path.startsWith('/api/files/')&&req.method==='GET'){const id=path.slice(11);if(!/^[a-f0-9]{64}$/.test(id))fail('Topilmadi',404);const obj=await env.BUCKET.get('portfolio/files/'+id);if(!obj)fail('Topilmadi',404);return new Response(obj.body,{headers:{'Content-Type':obj.httpMetadata?.contentType||'application/octet-stream','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox",'Cache-Control':'public,max-age=86400'}})}
- if(path==='/api/me')return json({user:u,setupNeeded:!state.owner,expiresAt:env.DB_EXPIRES_AT||null,teachers:u?.role==='owner'?state.teachers.map(({passwordHash,salt,inviteHash,...rest})=>rest):[]});
+ if(path==='/api/me')return json({user:u,setupNeeded:!state.owner,expiresAt:env.DB_EXPIRES_AT||null,teacherUnlocked:u?.role==='owner'&&teacherUnlocked(req,state),teachers:u?.role==='owner'&&teacherUnlocked(req,state)?state.teachers.map(({passwordHash,salt,inviteHash,...rest})=>rest):[]});
 
  if(path==='/api/owner-setup'&&req.method==='POST'){
   const b=await body(req);if(state.owner)fail('Sayt egasi hisobi allaqachon yaratilgan.',409);
@@ -37,7 +48,14 @@ async function handle(req,env){const url=new URL(req.url),path=url.pathname;cons
  if(path==='/api/login'&&req.method==='POST'){const b=await body(req),email=clean(b.email,254).toLowerCase(),key=await hash(email);await mutate(env,s=>{const now=Date.now();s.attempts=Object.fromEntries(Object.entries(s.attempts).filter(([,v])=>v.until>now));const a=s.attempts[key]||{count:0,until:now+900000};if(a.count>=6)fail('15 daqiqadan so‘ng qayta urinib ko‘ring.',429);a.count++;s.attempts[key]=a});const t=email===OWNER?state.owner:state.teachers.find(x=>x.email===email&&x.active&&x.passwordHash);const salt=t?.salt||'dummy-login-salt';const pw=await password(typeof b.password==='string'?b.password.slice(0,256):'',salt);if(!t||t.passwordHash!==pw)fail('Email yoki parol noto‘g‘ri.',401);const token=random(),h=await hash(token);await mutate(env,s=>{const current=email===OWNER?s.owner:s.teachers.find(x=>x.email===email&&x.active&&x.passwordHash===t.passwordHash);if(!current)fail('Ruxsat bekor qilingan.',403);delete s.attempts[key];addSession(s,email,h)});return json({ok:true},200,{'Set-Cookie':cookie(token)})}
  if(path==='/api/accept'&&req.method==='POST'){const b=await body(req);if(typeof b.password!=='string'||b.password.length<10||b.password.length>256)fail('Parol kamida 10 ta belgidan iborat bo‘lsin.');const inviteHash=await hash(b.token||''),salt=random(),pw=await password(b.password,salt),token=random(),h=await hash(token);await mutate(env,s=>{const t=s.teachers.find(x=>x.active&&x.inviteHash===inviteHash&&x.inviteExpires>Date.now());if(!t)fail('Taklif havolasi yaroqsiz yoki eskirgan.',401);t.salt=salt;t.passwordHash=pw;t.inviteHash=null;t.inviteExpires=null;addSession(s,t.email,h)});return json({ok:true},200,{'Set-Cookie':cookie(token)})}
  manager(u);
- if(path==='/api/backup'&&req.method==='GET'){owner(u);const {sessions,tickets,attempts,...backup}=state;const files=[];let total=0;for(const c of state.certificates){if(c.asset)continue;const obj=await env.BUCKET.get('portfolio/files/'+c.id);if(obj){const bytes=Buffer.from(obj.body);total+=bytes.length;if(total>120*1024*1024)fail('Zaxira hajmi juda katta. Hujjatlarni alohida yuklab oling.',413);files.push({id:c.id,type:c.type,base64:bytes.toString('base64')})}}return json({format:'sinfportfeli-backup-v1',createdAt:new Date().toISOString(),data:backup,files},200,{'Content-Disposition':'attachment; filename=sinfportfeli-zaxira.json'})}
+ if(path==='/api/teacher-unlock'&&req.method==='POST'){
+  owner(u);const b=await body(req),token=sessionToken(req,'portfolio_session'),key='teacher:'+digest(token||'');
+  await mutate(env,s=>{const a=s.attempts[key];if(a&&a.until>Date.now()&&a.count>=6)fail('15 daqiqadan keyin qayta urinib ko‘ring.',429);s.attempts[key]={count:a?.until>Date.now()?a.count+1:1,until:Date.now()+900000}});
+  if(!validPassword(b.password,env.TEACHER_GATE_SALT,env.TEACHER_GATE_HASH))fail('Ustoz qo‘shish bo‘limi paroli noto‘g‘ri.',403);
+  await mutate(env,s=>{const session=s.sessions.find(x=>x.hash===digest(token||'')&&x.expires>Date.now());if(!session)fail('Qayta hisobingizga kiring.',401);session.teacherUntil=Date.now()+900000;delete s.attempts[key]});return json({ok:true})
+ }
+ if(path==='/api/teachers'){owner(u);if(!teacherUnlocked(req,state))fail('Ustoz qo‘shish bo‘limi parolini kiriting.',403)}
+  if(path==='/api/backup'&&req.method==='GET'){owner(u);const {sessions,tickets,attempts,entries,...backup}=state;const files=[];let total=0;for(const c of state.certificates){if(c.asset)continue;const obj=await env.BUCKET.get('portfolio/files/'+c.id);if(obj){const bytes=Buffer.from(obj.body);total+=bytes.length;if(total>120*1024*1024)fail('Zaxira hajmi juda katta. Hujjatlarni alohida yuklab oling.',413);files.push({id:c.id,type:c.type,base64:bytes.toString('base64')})}}return json({format:'sinfportfeli-backup-v1',createdAt:new Date().toISOString(),data:backup,files},200,{'Content-Disposition':'attachment; filename=sinfportfeli-zaxira.json'})}
  if(path==='/api/teachers'&&req.method==='POST'){owner(u);const b=await body(req),email=clean(b.email,254).toLowerCase(),name=clean(b.name,100),subject=clean(b.subject,100);if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email===OWNER||!name)fail('Ustozning ism-familiyasi va emailini to‘g‘ri kiriting.');const token=random(),inviteHash=await hash(token);await mutate(env,s=>{const t=s.teachers.find(x=>x.email===email);if(t?.active&&t.passwordHash)fail('Bu ustoz allaqachon tayinlangan.',409);const entry={email,name,subject,active:true,inviteHash,inviteExpires:Date.now()+604800000,passwordHash:null,salt:null};if(t)Object.assign(t,entry);else s.teachers.push(entry)});return json({ok:true,invite:origin+'/#taklif='+token})}
  if(path==='/api/teachers'&&req.method==='DELETE'){owner(u);const b=await body(req);await mutate(env,s=>{const t=s.teachers.find(x=>x.email===b.email);if(!t)fail('Ustoz topilmadi.',404);t.active=false;t.inviteHash=null;s.sessions=s.sessions.filter(x=>x.email!==b.email)});return json({ok:true})}
 

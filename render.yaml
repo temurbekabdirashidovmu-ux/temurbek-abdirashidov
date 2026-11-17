@@ -28,3 +28,25 @@ services:
         value: "2026-12-17T05:17:50.335778Z"
       - key: PORTFOLIO_ORIGIN
         value: https://sinfportfeli-kabinet.onrender.com
+  - type: web
+    name: sinfportfeli
+    runtime: static
+    branch: main
+    buildCommand: "true"
+    staticPublishPath: ./gateway
+    autoDeployTrigger: commit
+    routes:
+      - type: redirect
+        source: /*
+        destination: https://sinfportfeli-kabinet.onrender.com/
+  - type: web
+    name: portfel
+    runtime: static
+    branch: main
+    buildCommand: "true"
+    staticPublishPath: ./gateway
+    autoDeployTrigger: commit
+    routes:
+      - type: redirect
+        source: /*
+        destination: https://sinfportfeli-kabinet.onrender.com/
