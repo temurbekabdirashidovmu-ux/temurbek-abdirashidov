@@ -1,5 +1,5 @@
-const CACHE='sinfportfeli-pwa-v3';
-const PUBLIC_ASSETS=['/theme.css','/offline.html','/icons/app-192.png','/icons/app-512.png','/icons/app-maskable-512.png','/icons/apple-touch-icon.png','/manifest.webmanifest','/pwa.css','/pwa.js'];
+const CACHE='sinfportfeli-pwa-v4';
+const PUBLIC_ASSETS=['/motion.js','/theme.css','/offline.html','/icons/app-192.png','/icons/app-512.png','/icons/app-maskable-512.png','/icons/apple-touch-icon.png','/manifest.webmanifest','/pwa.css','/pwa.js'];
 self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(PUBLIC_ASSETS)))});
 self.addEventListener('activate',event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith('sinfportfeli-pwa-')&&key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim()))});
 self.addEventListener('message',event=>{if(event.data?.type==='SKIP_WAITING')self.skipWaiting()});
