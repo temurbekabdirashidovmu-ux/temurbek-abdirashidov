@@ -1,0 +1,30 @@
+databases:
+  - name: sinfportfeli-data
+    databaseName: sinfportfeli_data
+    user: sinfportfeli_data_user
+    plan: free
+    region: frankfurt
+    postgresMajorVersion: "16"
+    ipAllowList: []
+services:
+  - type: web
+    name: sinfportfeli-kabinet
+    runtime: node
+    plan: free
+    region: frankfurt
+    branch: main
+    buildCommand: npm ci --omit=dev && node --check app.mjs && node --check server.mjs
+    startCommand: node server.mjs
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sinfportfeli-data
+          property: connectionString
+      - key: OWNER_SETUP_HASH
+        sync: false
+      - key: DB_EXPIRES_AT
+        value: "2026-12-17T05:17:50.335778Z"
+      - key: PORTFOLIO_ORIGIN
+        value: https://sinfportfeli-kabinet.onrender.com
