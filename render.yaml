@@ -23,7 +23,7 @@ services:
           name: sinfportfeli-data
           property: connectionString
       - key: OWNER_SETUP_HASH
-        sync: false
+        value: "4966d42cdab20a56f2038109745cfa68a6ab13ae153dbf91279894b128958d62"
       - key: DB_EXPIRES_AT
         value: "2026-12-17T05:17:50.335778Z"
       - key: PORTFOLIO_ORIGIN
