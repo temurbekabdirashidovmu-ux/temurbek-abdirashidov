@@ -33,7 +33,7 @@ async function handle(req,env){const url=new URL(req.url),path=url.pathname;cons
  const {state}=await read(env);const u=await identity(req,state);
  
  if(path==='/api/public'&&req.method==='GET')return json({students:state.students,certificates:state.certificates,teachers:state.teachers.filter(t=>t.active).map(t=>({name:t.name,subject:t.subject,active:!!t.passwordHash}))});
- if(path.startsWith('/api/files/')&&req.method==='GET'){const id=path.slice(11);if(!/^[a-f0-9]{64}$/.test(id))fail('Topilmadi',404);const obj=await env.BUCKET.get('portfolio/files/'+id);if(!obj)fail('Topilmadi',404);return new Response(obj.body,{headers:{'Content-Type':obj.httpMetadata?.contentType||'application/octet-stream','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox",'Cache-Control':'public,max-age=86400'}})}
+ if(path.startsWith('/api/files/')&&req.method==='GET'){const id=path.slice(11);if(!/^[a-f0-9]{64}$/.test(id))fail('Topilmadi',404);const obj=await env.BUCKET.get('portfolio/files/'+id);if(!obj)fail('Topilmadi',404);return new Response(obj.body,{headers:{'Content-Type':obj.httpMetadata?.contentType||'application/octet-stream','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox",'Cache-Control':'private,no-store'}})}
  if(path==='/api/me')return json({user:u,setupNeeded:!state.owner,expiresAt:env.DB_EXPIRES_AT||null,teacherUnlocked:u?.role==='owner'&&teacherUnlocked(req,state),teachers:u?.role==='owner'&&teacherUnlocked(req,state)?state.teachers.map(({passwordHash,salt,inviteHash,...rest})=>rest):[]});
 
  if(path==='/api/owner-setup'&&req.method==='POST'){
