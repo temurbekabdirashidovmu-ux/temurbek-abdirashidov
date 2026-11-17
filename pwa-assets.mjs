@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-const files=new Map([
+const files=new Map([['/theme.css',['theme.css','text/css; charset=utf-8']],
  ['/manifest.webmanifest',['manifest.webmanifest','application/manifest+json; charset=utf-8']],['/sw.js',['sw.js','text/javascript; charset=utf-8']],['/pwa.js',['pwa.js','text/javascript; charset=utf-8']],['/pwa.css',['pwa.css','text/css; charset=utf-8']],['/offline.html',['offline.html','text/html; charset=utf-8']],
  ...['app-192.png','app-512.png','app-maskable-512.png','apple-touch-icon.png'].map(file=>['/icons/'+file,['icons/'+file,'image/png']])
 ]);
