@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "test": "node tests/permissions.mjs && node tests/ui.mjs && node tests/pwa.mjs"
+    "test": "node tests/permissions.mjs && node tests/ui.mjs && node tests/pwa.mjs && node tests/realtime.mjs"
   },
   "dependencies": {
     "pdfkit": "^0.17.2",
