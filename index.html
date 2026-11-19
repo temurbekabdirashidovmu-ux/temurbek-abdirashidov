@@ -104,9 +104,11 @@ function openStudent(student) {
     certificate.rel = 'noopener';
     actions.append(certificate);
   }
-  const profile = studentElement('a', 'To‘liq portfolio va PDF ↗', 'btn');
+  const profile = studentElement('a', 'To‘liq portfolioni ochish', 'btn');
   profile.href = '/student/' + encodeURIComponent(student.id || student.name);
-  actions.append(profile);
+  const download = studentElement('a', 'PDF portfelni yuklab olish', 'btn');
+  download.href = '/api/profile/' + encodeURIComponent(student.id || student.name) + '/pdf';
+  actions.append(profile, download);
   if (certificateCounts.has(student.name)) {
     const documents = studentElement('a', 'Barcha sertifikatlari (' + certificateCounts.get(student.name) + ')', 'btn');
     documents.href = profile.href + '#sertifikatlar';
