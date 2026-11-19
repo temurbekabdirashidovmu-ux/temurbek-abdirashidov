@@ -35,7 +35,13 @@ function draw(){const area=el('management');area.replaceChildren();if(!local){ar
  const certs=node('div',null,'panel');certs.append(node('h3','Yuklangan sertifikatlar'));if(!publicData.certificates.length)certs.append(node('p','Yangi yuklangan hujjatlar shu yerda ko‘rinadi.'));for(const c of publicData.certificates){const row=node('div',null,'manage-row');row.append(node('strong',c.student),node('p',c.title));const del=node('button','O‘chirish','btn danger');del.onclick=async()=>{if(!confirm('Ushbu sertifikatni olib tashlaysizmi?'))return;try{await api('certificates','DELETE',{id:c.id});await refreshPublic();draw();status('Sertifikat olib tashlandi.')}catch(e){status(e.message,true)}};row.append(del);certs.append(row)}area.append(certs)
 }
 function drawTeachers(){const list=el('teacher-list');if(!list)return;list.replaceChildren(node('h3','Tayinlangan ustozlar'));if(!teachers.length)list.append(node('p','Hali ustoz tayinlanmagan.'));for(const t of teachers){const row=node('div',null,'manage-row');row.append(node('strong',t.name),node('p',`${t.email} · ${t.subject||'Ustoz'} · ${t.active?'Ruxsat berilgan':'Ruxsat bekor qilingan'}`));if(t.active){const b=node('button','Ustoz huquqini bekor qilish','btn danger');b.type='button';b.onclick=async()=>{if(!confirm(t.name+' uchun ustoz huquqini bekor qilasizmi?'))return;try{await api('teachers','DELETE',{email:t.email});await refreshPublic();await session();status('Ustoz huquqi bekor qilindi.')}catch(e){status(e.message,true)}};row.append(b)}list.append(row)}}
-window.addEventListener('hashchange',()=>{draw();if((location.hash.startsWith('#taklif=')||location.hash.startsWith('#egasi=')))el('kabinet').scrollIntoView()});
+const activationLink = hash => hash.startsWith('#taklif=') || hash.startsWith('#egasi=');
+window.addEventListener('hashchange', event => {
+  const previousHash = new URL(event.oldURL).hash;
+  if (!activationLink(previousHash) && !activationLink(location.hash)) return;
+  draw();
+  if (activationLink(location.hash)) el('kabinet').scrollIntoView();
+});
 const exit=document.createElement('button');exit.type='button';exit.className='pill';exit.textContent='Saytdan chiqish';exit.onclick=async()=>{try{await api('entry-logout','POST',{});location.reload()}catch(e){status(e.message,true)}};document.querySelector('.links').append(exit);
 (async()=>{draw();try{await refreshPublic();if(local)await session()}catch(e){status('Kabinet bilan ulanishda xatolik: '+e.message,true)}if((location.hash.startsWith('#taklif=')||location.hash.startsWith('#egasi=')))el('kabinet').scrollIntoView()})();
 })();
