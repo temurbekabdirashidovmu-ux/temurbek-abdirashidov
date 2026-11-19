@@ -50,6 +50,13 @@ const search = document.querySelector('#student-search');
 const sort = document.querySelector('#student-sort');
 const clearSearch = document.querySelector('#student-clear');
 const dialog = document.querySelector('#profile');
+const certificateCounts = new Map(data.filter(student => student.cert).map(student => [student.name, 1]));
+function updateCertificateCounts(certificates) {
+  certificateCounts.clear();
+  for (const certificate of certificates) {
+    certificateCounts.set(certificate.student, (certificateCounts.get(certificate.student) || 0) + 1);
+  }
+}
 const nameOrder = new Intl.Collator('uz', { sensitivity: 'base' });
 const normalize = value => String(value ?? '').toLocaleLowerCase('uz').replace(/[‘’ʻʼ`']/g, "'").trim();
 
@@ -100,6 +107,11 @@ function openStudent(student) {
   const profile = studentElement('a', 'To‘liq portfolio va PDF ↗', 'btn');
   profile.href = '/student/' + encodeURIComponent(student.id || student.name);
   actions.append(profile);
+  if (certificateCounts.has(student.name)) {
+    const documents = studentElement('a', 'Barcha sertifikatlari (' + certificateCounts.get(student.name) + ')', 'btn');
+    documents.href = profile.href + '#sertifikatlar';
+    actions.append(documents);
+  }
   content.append(actions);
   dialog.showModal();
 }
@@ -163,7 +175,7 @@ function render() {
     card.type = 'button';
     const picture = studentPhoto(student, 'student-image', true);
     const label = studentElement('div', '', 'student-text');
-    label.append(studentElement('strong', student.name), studentElement('span', 'Portfolioni ko‘rish ↗'));
+    label.append(studentElement('strong', student.name), studentElement('span', certificateCounts.has(student.name) ? certificateCounts.get(student.name) + ' ta sertifikat' : 'Portfolioni ko‘rish'));
     card.append(picture, label);
     card.addEventListener('click', () => openStudent(student));
     grid.append(card);
