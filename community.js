@@ -2,7 +2,14 @@
 const node=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined&&text!==null)n.textContent=text;if(cls)n.className=cls;return n};
 const escDate=t=>new Date(t).toLocaleString('uz-UZ',{dateStyle:'medium',timeStyle:'short'});const role=r=>({owner:'Sayt egasi',teacher:'Ustoz',student:'O‘quvchi'}[r]||'Mehmon');
 let model={students:[],works:[],resources:[],news:[],comments:[],user:null},tabName='overview',room='umumiy',chatTimer=null,chatBusy=false,chatSignature='',lastChatAt=0,renderEpoch=0,featureSearch='',chatStream=null;const chatDrafts=new Map();
-const section=node('section',null,'content profiles');section.id='jamoa';const wrap=node('div',null,'wrap');wrap.append(node('div','07 / Sinf hayoti','kicker'),node('h2','Har bir iste’dod uchun imkoniyat','title'),node('p','Shaxsiy portfellar, ijod, kutubxona va muloqot — sinfimizning umumiy makoni.','bodytext'));const shell=node('div',null,'community-shell'),tabs=node('div',null,'community-tabs'),view=node('div'),status=node('p','', 'community-status');status.setAttribute('role','status');tabs.setAttribute('role','tablist');shell.append(tabs,view,status);wrap.append(shell);section.append(wrap);document.querySelector('main').append(section);const nav=node('a','Jamoa markazi');nav.href='#jamoa';document.querySelector('.links').append(nav);
+const shell = document.querySelector('#jamoa .community-shell');
+const tabs = node('div', null, 'community-tabs');
+tabs.setAttribute('role', 'tablist');
+tabs.setAttribute('aria-label', 'Sinf hayoti');
+const view = node('div');
+const status = node('p', '', 'community-status');
+status.setAttribute('role', 'status');
+shell.append(tabs, view, status);
 const notify=(text,error=false)=>{status.textContent=text;status.classList.toggle('community-error',error)};const isStaff=()=>['owner','teacher'].includes(model.user?.role);
 async function api(path,method='GET',value){if(navigator.onLine===false)throw Error('Internet ulanishi yo‘q. Yozgan matningizni saqlab, qayta urinib ko‘ring.');const opts={method,headers:{'x-portfolio-request':'1'}};if(value instanceof FormData)opts.body=value;else if(value!==undefined){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(value)}const r=await fetch('/api/'+path,opts);const b=await r.json();if(!r.ok)throw Error(b.error||'So‘rov bajarilmadi.');return b}
 const button=(text,fn,cls='community-small')=>{const b=node('button',text,cls);b.type='button';b.onclick=async()=>{b.disabled=true;try{await fn()}catch(e){notify(e.message,true)}finally{b.disabled=false}};return b};

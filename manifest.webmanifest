@@ -20,8 +20,8 @@
     {"src": "/icons/app-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
   ],
   "shortcuts": [
-    {"name": "Jamoa markazi", "short_name": "Jamoa", "url": "/#jamoa", "icons": [{"src": "/icons/app-192.png", "sizes": "192x192"}]},
+    {"name": "Sinf hayoti", "short_name": "Sinf hayoti", "url": "/#jamoa", "icons": [{"src": "/icons/app-192.png", "sizes": "192x192"}]},
     {"name": "O‘quvchilar portfoliolari", "short_name": "Portfellar", "url": "/#oquvchilar", "icons": [{"src": "/icons/app-192.png", "sizes": "192x192"}]},
-    {"name": "Ustoz kabineti", "short_name": "Kabinet", "url": "/#kabinet", "icons": [{"src": "/icons/app-192.png", "sizes": "192x192"}]}
+    {"name": "Ustoz kabineti", "short_name": "Ustoz kabineti", "url": "/#kabinet", "icons": [{"src": "/icons/app-192.png", "sizes": "192x192"}]}
   ]
 }
