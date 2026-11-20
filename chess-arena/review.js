@@ -6,7 +6,7 @@ export function classify({before,after,played,best,fen}){
  const move=legal.find(m=>m.from===played.slice(0,2)&&m.to===played.slice(2,4)&&(played.length<5||m.promotion===played[4]));
  if(!move)return {label:'Illegal',loss:null};
  const sign=game.turn()==='w'?1:-1;
- const bestScore=cp(best)*sign, actualScore=cp(after)*sign;
+ const bestScore=cp(best), actualScore=-cp(after);
  const loss=Math.max(0,bestScore-actualScore);
  let label=loss<=15?'Best':loss<=35?'Excellent':loss<=70?'Good':loss<=130?'Inaccuracy':loss<=300?'Mistake':'Blunder';
  if(played===before?.bestmove)label='Best';
