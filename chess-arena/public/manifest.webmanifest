@@ -1,0 +1,20 @@
+{
+  "id": "/",
+  "name": "Chess Arena Pro",
+  "short_name": "Chess Arena",
+  "description": "Stockfish chess, online matches, tournaments and game analysis",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#111827",
+  "theme_color": "#111827",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
