@@ -2,11 +2,22 @@ import express from 'express';
 import http from 'node:http';
 import {Server} from 'socket.io';
 import {Chess} from 'chess.js';
+import {register,login,authenticated,leaderboard,tournaments,createTournament,joinTournament} from './accounts.js';
+import {classify} from './review.js';
 import {randomBytes} from 'node:crypto';
 import {spawn} from 'node:child_process';
 const app=express(),server=http.createServer(app),io=new Server(server);
 app.use(express.json({limit:'20kb'}));app.use(express.static('public'));
 const rooms=new Map();
+function withUser(req){return authenticated((req.headers.authorization||'').replace(/^Bearer /i,''))}
+app.post('/api/register',(req,res)=>{try{res.json(register(req.body.username,req.body.password))}catch(e){res.status(400).json({error:e.message})}});
+app.post('/api/login',(req,res)=>{try{res.json(login(req.body.username,req.body.password))}catch(e){res.status(401).json({error:e.message})}});
+app.get('/api/leaderboard',(_,res)=>res.json(leaderboard()));
+app.get('/api/tournaments',(_,res)=>res.json(tournaments()));
+app.post('/api/tournaments',(req,res)=>{const u=withUser(req);if(!u)return res.status(401).json({error:'Login required'});res.json(createTournament(u,req.body.title||'Open tournament'))});
+app.post('/api/tournaments/:id/join',(req,res)=>{const u=withUser(req);if(!u)return res.status(401).json({error:'Login required'});try{res.json(joinTournament(u,req.params.id))}catch(e){res.status(400).json({error:e.message})}});
+app.post('/api/review',async(req,res)=>{if(active>=2)return res.status(429).json({error:'Engine busy'});active++;try{const game=new Chess();if(!Array.isArray(req.body.moves)||req.body.moves.length>200)throw Error('Provide at most 200 UCI moves');const reviews=[];for(const uci of req.body.moves){const fen=game.fen(),before=await engine(fen,10);const move=game.move({from:uci.slice(0,2),to:uci.slice(2,4),promotion:uci[4]||'q'});if(!move)throw Error('Invalid move');const after=await engine(game.fen(),10);reviews.push({move:move.san,uci,...classify({before,after,played:uci,best:before.score,fen})})}res.json({reviews,disclaimer:'Heuristic classifications; not Chess.com labels'})}catch(e){res.status(400).json({error:e.message})}finally{active--}});
+
 app.get('/health',(_,res)=>res.json({ok:true,engine:'stockfish'}));
 function engine(fen,depth=12){return new Promise((resolve,reject)=>{const p=spawn(process.env.STOCKFISH_PATH||'/usr/games/stockfish');let output='',done=false;const timer=setTimeout(()=>finish(new Error('Engine timeout')),12000);function finish(err,result){if(done)return;done=true;clearTimeout(timer);p.kill();err?reject(err):resolve(result)}p.on('error',finish);p.stdout.on('data',d=>{output+=d.toString();if(output.length>500000)output=output.slice(-100000);const match=output.match(/bestmove ([a-h][1-8][a-h][1-8][qrbn]?)/);if(match){const scores=[...output.matchAll(/score (cp|mate) (-?\d+)/g)],last=scores.at(-1);finish(null,{bestmove:match[1],score:last?{type:last[1],value:Number(last[2])}:null});}});p.stdin.write('uci\nisready\nposition fen '+fen+'\ngo depth '+Math.max(4,Math.min(18,Number(depth)||12))+'\n');});}
 let active=0;
