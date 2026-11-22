@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#111b31">
+  <meta name="description" content="SinfChat — sinfdoshlar uchun shaxsiy, real vaqtda ishlaydigan messenjer.">
+  <title>SinfChat Online — Bizning sinf</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <section class="auth-screen" id="authScreen">
+    <div class="orb a"></div><div class="orb b"></div>
+    <div class="auth-card">
+      <div class="brand-logo">✦</div>
+      <div class="auth-title">Sinf<span>Chat</span></div>
+      <p class="auth-lead">Sinfdoshlaring bilan doimo aloqada bo‘l.</p>
+      <div class="tabs"><button id="loginTab" class="active">Kirish</button><button id="registerTab">Ro‘yxatdan o‘tish</button></div>
+      <form id="authForm">
+        <label>Username<input id="authUser" autocomplete="username" placeholder="masalan: temur" minlength="3" maxlength="24" required></label>
+        <label>Parol<input id="authPass" type="password" autocomplete="current-password" placeholder="Kamida 8 belgi" minlength="8" required></label>
+        <div id="registerFields" class="hidden">
+          <label>Sinf taklif kodi<input id="invite" type="password" autocomplete="off" placeholder="Sinfdan olgan kodingiz"></label>
+          <details><summary>Men sinf administratoriman</summary>
+            <label>Admin kodi<input id="adminCode" type="password" autocomplete="off" placeholder="Faqat asosiy admin uchun"></label>
+          </details>
+        </div>
+        <button class="primary full" id="authSubmit" type="submit">Kirish</button>
+        <p class="error" id="authError" role="alert"></p>
+      </form>
+      <p class="auth-note">Faqat sinf a’zolari uchun. Parolingizni hech kimga bermang.</p>
+    </div>
+  </section>
+
+  <div class="app hidden" id="app">
+    <aside class="sidebar" id="sidebar">
+      <header class="sidebar-head">
+        <div class="logo-small">✦</div><div class="brand-small">Sinf<span>Chat</span><small>ONLINE</small></div>
+        <button class="icon-btn" id="logoutBtn" title="Chiqish">⇥</button>
+      </header>
+      <div class="profile"><div class="avatar me" id="myAvatar">S</div>
+        <div class="profile-text"><strong id="myName">Username</strong><span>Mening akkauntim</span></div>
+        <span class="profile-dot"></span>
+      </div>
+      <div class="sidebar-search"><span>⌕</span><input id="searchInput" placeholder="Sinfdoshni qidirish..." autocomplete="off"></div>
+      <div class="side-label">GURUHLAR</div>
+      <button class="conversation selected" id="groupBtn">
+        <div class="group-avatar">👥</div>
+        <div class="conv-text"><strong>Bizning sinf</strong><span>Umumiy sinf guruhi</span></div>
+        <span class="conv-meta" id="groupUnread"></span>
+      </button>
+      <div class="side-label member-heading"><span>SHAXSIY SUHBATLAR</span><span id="memberCount">0</span></div>
+      <div class="people" id="peopleList"></div>
+      <footer class="sidebar-foot"><span class="safe-dot"></span> Faqat taklif kodi orqali kiriladi</footer>
+    </aside>
+
+    <main class="chat">
+      <header class="chat-head">
+        <button class="icon-btn back" id="backBtn" aria-label="Ortga">‹</button>
+        <div class="chat-icon" id="chatAvatar">👥</div>
+        <div class="chat-info"><strong id="chatName">Bizning sinf</strong><span id="chatStatus">Sinfdoshlar guruhi</span></div>
+        <button class="icon-btn" id="adminBtn" title="Administrator" hidden>⚙</button>
+      </header>
+      <div class="notice">⚠ Sinov versiyasi: bepul server qayta ishga tushganda xabarlar va akkauntlar yo‘qolishi mumkin.</div>
+      <section class="messages" id="messages" aria-live="polite"><div class="empty">Xabarlar yuklanmoqda...</div></section>
+      <div class="typing" id="typing"></div>
+      <form id="messageForm" class="composer">
+        <label class="icon-btn attach" for="imageInput" title="Rasm yuborish">＋</label>
+        <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+        <button class="icon-btn" type="button" id="micBtn" title="Ovozli xabar">🎙</button>
+        <input id="messageInput" placeholder="Xabar yozing..." maxlength="2000" autocomplete="off">
+        <button class="send-btn" type="submit" aria-label="Yuborish">➤</button>
+      </form>
+    </main>
+  </div>
+  <div id="toast" class="toast" role="status"></div>
+  <dialog id="adminDialog">
+    <div class="dialog-head"><strong>Administrator paneli</strong><button id="closeAdmin">×</button></div>
+    <p>Shikoyatlar va foydalanuvchilar</p>
+    <div id="adminContent">Yuklanmoqda...</div>
+  </dialog>
+</body>
+</html>
