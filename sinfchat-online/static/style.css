@@ -143,3 +143,8 @@ dialog::backdrop { background: #102e3080; }
 
 .avatar.tint-1 { background: #eddbb5; }
 .avatar.tint-2 { background: #d4deed; }
+
+.people-empty { margin: 8px 16px; color: #d2e0d8; font-size: .9rem; }
+.history-error { align-self: center; margin: auto; text-align: center; color: var(--muted); }
+#jumpLatest { margin: 4px auto; }
+.send-btn:disabled { cursor: default; }

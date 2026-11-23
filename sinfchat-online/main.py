@@ -263,10 +263,15 @@ def serve_media(mid:int,request:Request):
         if not msg and f["owner"]!=u["id"]:fail(404,"Ruxsat yo'q")
     return Response(content=f["data"],media_type=f["mime"],headers={"Cache-Control":"private, max-age=600"})
 
+async def send_to_socket(ws, event):
+    try:
+        await ws.send_json(event)
+    except (RuntimeError, OSError, WebSocketDisconnect):
+        pass
+
 async def send_to(uid,event):
     for ws in list(clients.get(uid,set())):
-        try:await ws.send_json(event)
-        except Exception:pass
+        await send_to_socket(ws,event)
 
 async def emit(event,targets=None):
     for uid in list(clients) if targets is None else targets:
@@ -327,33 +332,37 @@ async def socket(ws:WebSocket):
                 await emit({"type":"deleted","id":mid},[uid,msg["recipient"]] if msg["recipient"] else None)
                 continue
             if kind!="message":continue
+            tag = data.get("tag")
+            receipt = {"tag": tag, "room": data.get("recipient") or 0} if isinstance(tag,str) and len(tag)<=64 else {}
             nowtime=time.monotonic()
             while recent and nowtime-recent[0]>10:recent.popleft()
             if len(recent)>=12:
-                await ws.send_json({"type":"error","message":"Juda tez yozayapsiz"});continue
+                await ws.send_json({**receipt,"type":"error","message":"Juda tez yozayapsiz"});continue
             recent.append(nowtime)
             body_value=data.get("body") or ""
             if not isinstance(body_value, str) or len(body_value)>2000:
-                await ws.send_json({"type":"error","message":"Xabar 2000 belgidan oshmasligi kerak"});continue
+                await ws.send_json({**receipt,"type":"error","message":"Xabar 2000 belgidan oshmasligi kerak"});continue
             body=body_value.strip()
             try:peer=int(data.get("recipient") or 0);media_id=int(data.get("media_id") or 0)
             except (ValueError,TypeError):continue
             if peer<0 or media_id<0 or (not body and not media_id):
-                await ws.send_json({"type":"error","message":"Bo'sh yoki noto'g'ri xabar"});continue
+                await ws.send_json({**receipt,"type":"error","message":"Bo'sh yoki noto'g'ri xabar"});continue
             with LOCK,connect() as db:
                 if peer:
                     exists=db.execute("SELECT 1 FROM users WHERE id=? AND banned=0",(peer,)).fetchone()
                     if not exists or peer==uid:
-                        await ws.send_json({"type":"error","message":"Shaxsiy suhbat foydalanuvchisi mavjud emas"});continue
+                        await ws.send_json({**receipt,"type":"error","message":"Shaxsiy suhbat foydalanuvchisi mavjud emas"});continue
                 if media_id:
                     f=db.execute("SELECT owner FROM media WHERE id=?",(media_id,)).fetchone()
                     prev=db.execute("SELECT 1 FROM messages WHERE media_id=?",(media_id,)).fetchone()
                     if not f or f["owner"]!=uid or prev:
-                        await ws.send_json({"type":"error","message":"Fayl yuborilmadi yoki oldin ishlatilgan"});continue
+                        await ws.send_json({**receipt,"type":"error","message":"Fayl yuborilmadi yoki oldin ishlatilgan"});continue
                 sent=datetime.now(timezone.utc).isoformat()
                 cur=db.execute("INSERT INTO messages(sender,recipient,body,media_id,sent) VALUES(?,?,?,?,?) RETURNING id",(uid,peer or None,body,media_id or None,sent))
                 mid=cur.fetchone()["id"];db.commit()
             event={"type":"message","id":mid,"sender":uid,"username":u["name"],"recipient":peer or None,"body":body,"media_id":media_id or None,"sent":sent}
+            if receipt:
+                await send_to_socket(ws, {**receipt, "type":"saved", "id":mid})
             await emit(event,[uid,peer] if peer else None)
     except (WebSocketDisconnect,ValueError,RuntimeError):pass
     finally:

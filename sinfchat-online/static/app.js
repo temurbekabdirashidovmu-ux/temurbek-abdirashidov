@@ -6,7 +6,33 @@ let online = new Set(), typingHide = null, toastHide = null, unread = new Set();
 const drafts = new Map();
 let historyVersion = 0, pendingHistory = null, oldest = null, reconnectTimer;
 let rosterReady = false, legacyMode = false, importing = false;
-let socketHasConnected = false;
+const sending = new Map();
+let newMessages = 0, historyFallback;
+
+function draftKey(){ return "sinfchat.drafts."+me.id; }
+function saveDraft(id, value){
+  if(value) drafts.set(id,value); else drafts.delete(id);
+  try {
+    if(drafts.size) sessionStorage.setItem(draftKey(), JSON.stringify([...drafts]));
+    else sessionStorage.removeItem(draftKey());
+  } catch {}
+}
+function updateComposer(){
+  const pending=sending.has(peer);
+  $("sendBtn").disabled=pending || !rosterReady || !$("messageInput").value.trim();
+  $("sendBtn").setAttribute("aria-label",pending?"Yuborilmoqda":"Yuborish");
+  $("sendBtn").textContent=pending?"…":"➤";
+}
+function finishSend(d){
+  const entry=sending.get(d.room);
+  if(!entry || entry.tag!==d.tag)return;
+  sending.delete(d.room);
+  if(d.type==="saved" && drafts.get(d.room)===entry.value){
+    saveDraft(d.room,"");
+    if(peer===d.room)$("messageInput").value="";
+  }
+  updateComposer();
+}
 
 async function api(url, options = {}) {
   const response = await fetch(url, {
@@ -73,13 +99,21 @@ $("authForm").addEventListener("submit",async e=>{
 
 async function initialize(){
   me=await api("/api/me");
-  socketHasConnected=false;
+  peer=0;
+  drafts.clear();
+  try {
+    for(const [id,value] of JSON.parse(sessionStorage.getItem(draftKey()) || "[]"))
+      if(Number.isInteger(id) && typeof value==="string")drafts.set(id,value);
+  } catch {}
+  $("messageInput").value=drafts.get(0)||"";
+  updateComposer();
   auth.classList.add("hidden"); app.classList.remove("hidden");
   $("myName").textContent="@"+me.username;
   $("myAvatar").textContent=me.username[0].toUpperCase();
   $("adminBtn").hidden=!me.admin;
   await refreshPeople();
-  choose(0);
+  app.classList.add("chat-open");
+  historyFallback=setTimeout(()=>{if(me && !rosterReady)choose(peer,false);},3500);
   openSocket();
 }
 async function refreshPeople(){
@@ -111,7 +145,13 @@ function renderPeople(){
   if(peer)$("chatStatus").textContent=online.has(peer)?"Hozir onlayn":"Shaxsiy suhbat";
   people.replaceChildren();
   const q=$("searchInput").value.trim().replace(/^@/,"").toLowerCase();
-  for (const u of users.filter(x=>x.username.includes(q))){
+  const matches=users.filter(x=>x.username.includes(q));
+  if(!matches.length){
+    const hint=document.createElement("p");hint.className="people-empty";
+    hint.textContent=q?"Bu nom bilan sinfdosh topilmadi.":"Sinfdoshlaringiz qo‘shilganda shu yerda ko‘rinadi.";
+    people.append(hint);
+  }
+  for (const u of matches){
     const item=document.createElement("button");item.className="conversation person"+(peer===u.id?" selected":"");
     const avatar=document.createElement("span");avatar.className="avatar";avatar.textContent=u.username[0].toUpperCase();
     avatar.classList.add("tint-"+u.id%3);
@@ -129,14 +169,15 @@ $("searchInput").oninput=renderPeople;
 $("groupBtn").onclick=()=>choose(0);
 $("backBtn").onclick=()=>app.classList.remove("chat-open");
 
-async function choose(id){
+async function choose(id, openChat=true){
   if(id!==peer){
     drafts.set(peer,$("messageInput").value);
     $("messageInput").value=drafts.get(id)||"";
   }
   peer=id; unread.delete(id);
+  newMessages=0; $("jumpLatest").hidden=true; updateComposer();
   $("groupUnread").textContent=unread.has(0)?"●":"";
-  app.classList.add("chat-open");
+  if(openChat)app.classList.add("chat-open");
   $("groupBtn").classList.toggle("selected",id===0);
   const u=users.find(x=>x.id===id);
   $("chatName").textContent=id?"@"+(u?.username||"Foydalanuvchi"):"Bizning sinf";
@@ -165,7 +206,14 @@ async function choose(id){
     oldest=data[0]?.id;
     $("older").hidden=data.length<150;
     scrollBottom();
-  }catch(e){if(version===historyVersion)toast(e.message,true);}
+  }catch(e){
+    if(version!==historyVersion)return;
+    loader.textContent="Suhbat tarixini yuklab bo‘lmadi. ";
+    const retry=document.createElement("button");
+    retry.className="archive-button"; retry.textContent="Qayta yuklash";
+    retry.onclick=()=>choose(id,false);
+    loader.append(retry); loader.classList.replace("empty","history-error");
+  }
   finally{
     if(version===historyVersion){
       pendingHistory=null;
@@ -194,9 +242,15 @@ function applyEvent(event){
   if(event.type==="deleted")messages.querySelector('[data-id="'+event.id+'"]')?.remove();
   else addMessage(event);
 }
-function scrollBottom(){requestAnimationFrame(()=>messages.scrollTop=messages.scrollHeight);}
+function nearBottom(){return messages.scrollHeight-messages.clientHeight-messages.scrollTop<64;}
+function scrollBottom(){requestAnimationFrame(()=>{messages.scrollTop=messages.scrollHeight;});}
+messages.addEventListener("scroll",()=>{
+  if(nearBottom()){newMessages=0;$("jumpLatest").hidden=true;}
+});
+$("jumpLatest").onclick=scrollBottom;
 function addMessage(m, scroll=true, target=messages){
   if(messages.querySelector('[data-id="'+m.id+'"]'))return;
+  const follow=scroll && (m.sender===me.id || nearBottom());
   const intro=messages.querySelector(".empty");
   if(intro) intro.remove();
   const row=document.createElement("div");row.className="bubble-row"+(m.sender===me.id?" mine":"");row.dataset.id=m.id;
@@ -223,7 +277,12 @@ function addMessage(m, scroll=true, target=messages){
   const action=document.createElement("button");
   action.textContent=m.sender===me.id?"O‘chirish":"Shikoyat";
   action.onclick=()=>m.sender===me.id?deleteMessage(m.id):reportMessage(m.id);
-  meta.append(action);bubble.append(meta);row.append(bubble);target.append(row);if(scroll)scrollBottom();
+  meta.append(action);bubble.append(meta);row.append(bubble);target.append(row);
+  if(follow)scrollBottom();
+  else if(scroll){
+    $("jumpLatest").textContent="Yangi xabarlar · "+(++newMessages)+" ↓";
+    $("jumpLatest").hidden=false;
+  }
 }
 function deleteMessage(id){
   if(confirm("Ushbu xabar hammadan o‘chirilsinmi?")) sendWS({type:"delete",id});
@@ -246,28 +305,21 @@ function openSocket(){
   const socket=ws;
   ws.addEventListener("open",()=>{
     if(ws!==socket || !me)return;
-    const returning=socketHasConnected;
-    socketHasConnected=true;
-    toast(returning?"Ulanish qayta tiklandi":"Chatga ulandingiz");
-    if(returning) {
-      // A lost connection may have missed incoming messages and deletions.
-      const selected=peer;
-      choose(selected);
-      refreshPeople();
-    }
+    $("chatStatus").textContent="Ulanmoqda…";
   });
   ws.addEventListener("message", e=>{
     if(ws!==socket || !me)return;
     let d;try{d=JSON.parse(e.data)}catch{return;}
-    if(d.type==="error"){toast(d.message,true);return;}
+    if(d.type==="saved"){finishSend(d);return;}
+    if(d.type==="error"){finishSend(d);toast(d.message,true);return;}
     if(d.type==="online"){
+      clearTimeout(historyFallback);
       rosterReady=true;
       online=new Set(d.users);
       (d.members||[]).forEach(u=>rememberUser(u.id,u.username));
       renderPeople();
-      const wasOpen=app.classList.contains("chat-open");
-      choose(peer);
-      if(!wasOpen)app.classList.remove("chat-open");
+      updateComposer();
+      choose(peer,false);
       return;
     }
     if(d.type==="presence"){
@@ -277,7 +329,7 @@ function openSocket(){
       return;
     }
     if(d.type==="typing"){
-      if((peer===0 && !d.recipient)||(peer>0 && d.user===peer)){
+      if((peer===0 && !d.recipient)||(peer>0 && d.user===peer && d.recipient===me.id)){
         $("typing").textContent=d.username+" yozmoqda...";
         clearTimeout(typingHide);typingHide=setTimeout(()=>$("typing").textContent="",1700);
       }
@@ -296,6 +348,8 @@ function openSocket(){
   ws.addEventListener("close",()=>{
     if(ws!==socket || !me)return;
     rosterReady=false;online.clear();renderPeople();
+    if(sending.size)toast("Yuborish tasdiqlanmadi. Qayta yuborishdan oldin tarixni tekshiring.",true);
+    sending.clear();updateComposer();
     $("chatStatus").textContent="Ulanish tiklanmoqda...";
     clearTimeout(reconnectTimer);
     reconnectTimer=setTimeout(()=>{if(me && !app.classList.contains("hidden"))openSocket();},2800);
@@ -304,12 +358,19 @@ function openSocket(){
 $("messageForm").addEventListener("submit", e=>{
   e.preventDefault();
   const body=$("messageInput").value.trim();
-  if(!body)return;
-  if(sendWS({type:"message",recipient:peer||null,body})){$("messageInput").value="";}
+  if(!body || sending.has(peer))return;
+  const tag=crypto.randomUUID();
+  const value=$("messageInput").value;
+  saveDraft(peer,value);
+  if(sendWS({type:"message",recipient:peer||null,body,tag})){
+    sending.set(peer,{tag,value});
+    updateComposer();
+  }
 });
 let lastTyping=0;
 $("messageInput").addEventListener("input",()=>{
-  if(Date.now()-lastTyping>850){sendWS({type:"typing",recipient:peer||null});lastTyping=Date.now();}
+  saveDraft(peer,$("messageInput").value);updateComposer();
+  if(rosterReady && Date.now()-lastTyping>850){sendWS({type:"typing",recipient:peer||null});lastTyping=Date.now();}
 });
 async function uploadAndSend(blob,name,type,voice=false,recipient=peer){
   const owner=me?.id;
@@ -341,14 +402,17 @@ $("micBtn").onclick=async()=>{
   }catch{toast("Mikrofon ruxsati berilmadi",true);}
 };
 $("logoutBtn").onclick=async()=>{
-  try{await api("/api/logout",{method:"POST",body:"{}"});}catch{}
+  try{await api("/api/logout",{method:"POST",body:"{}"});}catch(e){toast("Chiqish amalga oshmadi. Qayta urining.",true);return;}
+  try{sessionStorage.removeItem(draftKey());}catch{}
   if(recorder?.state==="recording"){recorder.stop();$("micBtn").textContent="🎙";}
   if(ws){ws.onclose=null;ws.close();ws=null;}
   clearTimeout(reconnectTimer);
+  clearTimeout(historyFallback);
   historyVersion++;pendingHistory=null;
-  online.clear();unread.clear();drafts.clear();users=[];rosterReady=false;socketHasConnected=false;
+  online.clear();unread.clear();drafts.clear();users=[];rosterReady=false;sending.clear();
   $("archiveDialog").close();$("archiveContent").replaceChildren();$("archivePass").value="";$("messageInput").value="";
   $("onlineDialog").close();
+  $("searchInput").value=""; $("messages").replaceChildren(); $("adminDialog").close();
   me=null;app.classList.add("hidden");auth.classList.remove("hidden");app.classList.remove("chat-open");authMode(false);
 };
 $("adminBtn").onclick=async()=>{

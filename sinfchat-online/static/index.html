@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#113c3e">
   <meta name="description" content="SinfChat — sinfdoshlar uchun shaxsiy, real vaqtda ishlaydigan messenjer.">
   <title>SinfChat Online — Bizning sinf</title>
-  <link rel="stylesheet" href="/static/style.css?v=quality3">
-  <script src="/static/app.js?v=quality3" defer></script>
+  <link rel="stylesheet" href="/static/style.css?v=delivery4">
+  <script src="/static/app.js?v=delivery4" defer></script>
 </head>
 <body>
   <section class="auth-screen" id="authScreen">
@@ -40,7 +40,7 @@
     <aside class="sidebar" id="sidebar">
       <header class="sidebar-head">
         <div class="mini-mark" aria-hidden="true"></div><div class="brand-small">Sinf<span>Chat</span></div>
-        <button class="icon-btn" id="logoutBtn" title="Chiqish">⇥</button>
+        <button class="icon-btn" id="logoutBtn" aria-label="Akkauntdan chiqish" title="Chiqish">⇥</button>
       </header>
       <div class="profile"><div class="avatar me" id="myAvatar">S</div>
         <div class="profile-text"><strong id="myName">Username</strong><span>Mening akkauntim</span></div>
@@ -68,13 +68,14 @@
       </header>
       <button id="older" class="older" hidden>Oldingi xabarlar</button>
       <section class="messages" id="messages" aria-live="polite"><div class="empty">Xabarlar yuklanmoqda...</div></section>
+      <button id="jumpLatest" class="older" type="button" hidden></button>
       <div class="typing" id="typing"></div>
       <form id="messageForm" class="composer">
         <label class="icon-btn attach" for="imageInput" title="Rasm yuborish">＋</label>
         <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>
         <button class="icon-btn" type="button" id="micBtn" title="Ovozli xabar">🎙</button>
         <input aria-label="Xabar matni" id="messageInput" placeholder="Xabar yozing..." maxlength="2000" autocomplete="off">
-        <button class="send-btn" type="submit" aria-label="Yuborish">➤</button>
+        <button class="send-btn" id="sendBtn" disabled type="submit" aria-label="Yuborish">➤</button>
       </form>
     </main>
   </div>
