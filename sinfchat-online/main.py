@@ -15,28 +15,19 @@ from urllib.parse import urlparse
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel, Field
+import psycopg
+from storage import connect, init_schema
 
 HERE = Path(__file__).parent
-DB_PATH = os.environ.get("SQLITE_PATH", str(HERE / "sinfchat.db"))
 INVITE_CODE = os.environ.get("INVITE_CODE", "")
 ADMIN_CODE = os.environ.get("ADMIN_SETUP_CODE", "")
 LOCK = Lock()
 clients = defaultdict(set)
 attempts = defaultdict(deque)
 
-def connect():
-    db = sqlite3.connect(DB_PATH, timeout=30)
-    db.row_factory = sqlite3.Row
-    db.execute("PRAGMA foreign_keys=ON")
-    db.execute("PRAGMA busy_timeout=30000")
-    return db
+online_names = {}
 
-with connect() as db:
-    db.execute("CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL, salt TEXT NOT NULL, password TEXT NOT NULL, admin INTEGER DEFAULT 0, banned INTEGER DEFAULT 0)")
-    db.execute("CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY, uid INTEGER NOT NULL, expiry INTEGER NOT NULL)")
-    db.execute("CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY, sender INTEGER NOT NULL, recipient INTEGER, body TEXT NOT NULL, media_id INTEGER, sent TEXT NOT NULL)")
-    db.execute("CREATE TABLE IF NOT EXISTS media(id INTEGER PRIMARY KEY, owner INTEGER NOT NULL, mime TEXT NOT NULL, data BLOB NOT NULL)")
-    db.execute("CREATE TABLE IF NOT EXISTS reports(id INTEGER PRIMARY KEY, reporter INTEGER, message_id INTEGER, reason TEXT, sent TEXT)")
+init_schema()
 
 app = FastAPI(title="SinfChat Online", docs_url=None, redoc_url=None)
 
@@ -139,10 +130,10 @@ def register(data:Credentials,request:Request,response:Response):
         with LOCK,connect() as db:
             if data.admin_code and db.execute("SELECT 1 FROM users WHERE admin=1").fetchone():
                 fail(409,"Admin allaqachon mavjud")
-            cur=db.execute("INSERT INTO users(name,salt,password,admin) VALUES(?,?,?,?)",(name,salt,digest(data.password,salt),int(bool(data.admin_code))))
-            uid=cur.lastrowid
+            cur=db.execute("INSERT INTO users(name,salt,password,admin) VALUES(?,?,?,?) RETURNING id",(name,salt,digest(data.password,salt),int(bool(data.admin_code))))
+            uid=cur.fetchone()["id"]
             db.commit()
-    except sqlite3.IntegrityError:
+    except (sqlite3.IntegrityError, psycopg.errors.UniqueViolation):
         fail(409,"Bu username band")
     session_cookie(response,uid,request)
     return {"ok":True}
@@ -179,13 +170,22 @@ def users(request:Request):
     return [{"id":x["id"],"username":x["name"],"online":bool(clients.get(x["id"]))} for x in rows]
 
 @app.get("/api/messages")
-def history(request:Request,peer:int=0):
+def history(request:Request, peer:int=0, before:int|None=None):
     u=current(request)
+    if peer:
+        scope = "((m.sender=? AND m.recipient=?) OR (m.sender=? AND m.recipient=?))"
+        params = [u["id"], peer, peer, u["id"]]
+    else:
+        scope = "m.recipient IS NULL"
+        params = []
+    if before is not None:
+        scope += " AND m.id < ?"
+        params.append(before)
     with connect() as db:
-        if peer:
-            rows=db.execute("SELECT m.*,u.name username FROM messages m JOIN users u ON m.sender=u.id WHERE (m.sender=? AND m.recipient=?) OR (m.sender=? AND m.recipient=?) ORDER BY m.id DESC LIMIT 150",(u["id"],peer,peer,u["id"])).fetchall()
-        else:
-            rows=db.execute("SELECT m.*,u.name username FROM messages m JOIN users u ON m.sender=u.id WHERE m.recipient IS NULL ORDER BY m.id DESC LIMIT 150").fetchall()
+        rows = db.execute(
+            "SELECT m.*,u.name username FROM messages m JOIN users u ON m.sender=u.id "
+            f"WHERE {scope} ORDER BY m.id DESC LIMIT 150", params
+        ).fetchall()
     return [to_msg(x) for x in reversed(rows)]
 
 @app.post("/api/report")
@@ -235,8 +235,8 @@ async def media(file:UploadFile=File(...),request:Request=None):
         if kind=="audio/ogg" and not raw.startswith(b"OggS"):fail(400,"Audio formati xato")
     else: fail(400,"Faqat rasm yoki ovozli xabar")
     with LOCK,connect() as db:
-        cur=db.execute("INSERT INTO media(owner,mime,data) VALUES(?,?,?)",(u["id"],kind,raw))
-        mid=cur.lastrowid;db.commit()
+        cur=db.execute("INSERT INTO media(owner,mime,data) VALUES(?,?,?) RETURNING id",(u["id"],kind,raw))
+        mid=cur.fetchone()["id"];db.commit()
     return {"media_id":mid,"mime":kind}
 
 @app.get("/media/{mid}")
@@ -268,10 +268,16 @@ async def socket(ws:WebSocket):
     except HTTPException:
         await ws.close(code=1008);return
     await ws.accept()
-    uid=u["id"];clients[uid].add(ws);recent=deque()
-    await ws.send_json({"type":"online","users":list(clients)})
-    await emit({"type":"presence","user":uid,"online":True})
+    uid = u["id"]
+    first_connection = not clients[uid]
+    clients[uid].add(ws)
+    online_names[uid] = u["name"]
+    recent = deque()
     try:
+        await ws.send_json({"type":"online", "users":list(clients),
+                            "members":[{"id":k, "username":v} for k,v in online_names.items()]})
+        if first_connection:
+            await emit({"type":"presence","user":uid,"username":u["name"],"online":True})
         while True:
             data=await ws.receive_json()
             try:now=current(ws)
@@ -313,8 +319,8 @@ async def socket(ws:WebSocket):
                     prev=db.execute("SELECT 1 FROM messages WHERE media_id=?",(media_id,)).fetchone()
                     if not f or f["owner"]!=uid or prev:continue
                 sent=datetime.now(timezone.utc).isoformat()
-                cur=db.execute("INSERT INTO messages(sender,recipient,body,media_id,sent) VALUES(?,?,?,?,?)",(uid,peer or None,body,media_id or None,sent))
-                mid=cur.lastrowid;db.commit()
+                cur=db.execute("INSERT INTO messages(sender,recipient,body,media_id,sent) VALUES(?,?,?,?,?) RETURNING id",(uid,peer or None,body,media_id or None,sent))
+                mid=cur.fetchone()["id"];db.commit()
             event={"type":"message","id":mid,"sender":uid,"username":u["name"],"recipient":peer or None,"body":body,"media_id":media_id or None,"sent":sent}
             await emit(event,[uid,peer] if peer else None)
     except (WebSocketDisconnect,ValueError,RuntimeError):pass
@@ -322,4 +328,5 @@ async def socket(ws:WebSocket):
         clients[uid].discard(ws)
         if not clients[uid]:
             clients.pop(uid,None)
+            online_names.pop(uid,None)
             await emit({"type":"presence","user":uid,"online":False})

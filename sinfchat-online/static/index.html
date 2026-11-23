@@ -60,9 +60,10 @@
         <button class="icon-btn back" id="backBtn" aria-label="Ortga">‹</button>
         <div class="chat-icon" id="chatAvatar">👥</div>
         <div class="chat-info"><strong id="chatName">Bizning sinf</strong><span id="chatStatus">Sinfdoshlar guruhi</span></div>
+        <button class="online-count" id="showOnline" aria-haspopup="dialog">Ulanmoqda…</button>
         <button class="icon-btn" id="adminBtn" title="Administrator" hidden>⚙</button>
       </header>
-      <div class="notice">⚠ Sinov versiyasi: bepul server qayta ishga tushganda xabarlar va akkauntlar yo‘qolishi mumkin.</div>
+      <button id="older" class="older" hidden>Oldingi xabarlar</button>
       <section class="messages" id="messages" aria-live="polite"><div class="empty">Xabarlar yuklanmoqda...</div></section>
       <div class="typing" id="typing"></div>
       <form id="messageForm" class="composer">
@@ -75,6 +76,10 @@
     </main>
   </div>
   <div id="toast" class="toast" role="status"></div>
+  <dialog id="onlineDialog" aria-labelledby="onlineTitle">
+    <div class="dialog-head"><strong id="onlineTitle">Hozir onlayn</strong><button id="closeOnline" aria-label="Yopish">×</button></div>
+    <ul id="onlineList"></ul>
+  </dialog>
   <dialog id="adminDialog">
     <div class="dialog-head"><strong>Administrator paneli</strong><button id="closeAdmin">×</button></div>
     <p>Shikoyatlar va foydalanuvchilar</p>
