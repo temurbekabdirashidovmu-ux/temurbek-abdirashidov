@@ -7,7 +7,7 @@ const drafts = new Map();
 let historyVersion = 0, pendingHistory = null, oldest = null, reconnectTimer;
 let rosterReady = false, legacyMode = false, importing = false;
 const sending = new Map();
-let newMessages = 0, historyFallback;
+let newMessages = 0, historyFallback, reconnectAttempts = 0;
 
 function draftKey(){ return "sinfchat.drafts."+me.id; }
 function saveDraft(id, value){
@@ -99,7 +99,7 @@ $("authForm").addEventListener("submit",async e=>{
 
 async function initialize(){
   me=await api("/api/me");
-  peer=0;
+  peer=0;reconnectAttempts=0;
   drafts.clear();
   try {
     for(const [id,value] of JSON.parse(sessionStorage.getItem(draftKey()) || "[]"))
@@ -132,7 +132,7 @@ function rememberUser(id, username){
 }
 function renderPeople(){
   $("memberCount").textContent=users.length;
-  $("showOnline").textContent=rosterReady ? online.size+" onlayn" : "Ulanmoqda…";
+  showConnectionState();
   $("onlineList").replaceChildren();
   const present=[me,...users].filter(u=>u && online.has(u.id));
   for(const u of present){
@@ -277,7 +277,16 @@ function addMessage(m, scroll=true, target=messages){
   const action=document.createElement("button");
   action.textContent=m.sender===me.id?"O‘chirish":"Shikoyat";
   action.onclick=()=>m.sender===me.id?deleteMessage(m.id):reportMessage(m.id);
-  meta.append(action);bubble.append(meta);row.append(bubble);target.append(row);
+  meta.append(action);bubble.append(meta);row.append(bubble);
+  // Parallel sends may arrive in a different order from their stored IDs.
+  let next=null;
+  if(target===messages && scroll){
+    let previous=target.lastElementChild;
+    while(previous?.dataset.id && Number(previous.dataset.id)>m.id){
+      next=previous;previous=previous.previousElementSibling;
+    }
+  }
+  target.insertBefore(row,next);
   if(follow)scrollBottom();
   else if(scroll){
     $("jumpLatest").textContent="Yangi xabarlar · "+(++newMessages)+" ↓";
@@ -297,8 +306,36 @@ function sendWS(message){
   if(!ws || ws.readyState!==WebSocket.OPEN){toast("Serverga ulanish kutilmoqda...",true);return false;}
   ws.send(JSON.stringify(message));return true;
 }
+function showConnectionState(){
+  const offline=navigator.onLine===false;
+  $("connectionNote").hidden=rosterReady;
+  $("connectionNote").textContent=offline?"Internet uzildi. Qoralamangiz shu oynada saqlanadi.":"Chatga ulanilmoqda…";
+  $("showOnline").textContent=rosterReady?online.size+" onlayn":(offline?"Oflayn":"Ulanmoqda…");
+}
+function disconnected(){
+  rosterReady=false;online.clear();renderPeople();
+  if(sending.size)toast("Yuborish tasdiqlanmadi. Qayta yuborishdan oldin tarixni tekshiring.",true);
+  sending.clear();updateComposer();
+}
+function resumeConnection(){
+  if(!me || navigator.onLine===false || ws?.readyState===WebSocket.OPEN || ws?.readyState===WebSocket.CONNECTING)return;
+  openSocket();
+}
+window.addEventListener("offline",()=>{
+  if(!me)return;
+  clearTimeout(reconnectTimer);
+  const socket=ws;ws=null;
+  disconnected();socket?.close();
+});
+window.addEventListener("online",resumeConnection);
+window.addEventListener("pageshow",resumeConnection);
+document.addEventListener("visibilitychange",()=>{
+  if(!document.hidden)resumeConnection();
+});
 function openSocket(){
   clearTimeout(reconnectTimer);
+  showConnectionState();
+  if(navigator.onLine===false)return;
   if(ws) ws.close();
   const protocol=location.protocol==="https:"?"wss:":"ws:";
   ws=new WebSocket(protocol+"//"+location.host+"/ws");
@@ -314,7 +351,7 @@ function openSocket(){
     if(d.type==="error"){finishSend(d);toast(d.message,true);return;}
     if(d.type==="online"){
       clearTimeout(historyFallback);
-      rosterReady=true;
+      rosterReady=true;reconnectAttempts=0;
       online=new Set(d.users);
       (d.members||[]).forEach(u=>rememberUser(u.id,u.username));
       renderPeople();
@@ -347,12 +384,12 @@ function openSocket(){
   });
   ws.addEventListener("close",()=>{
     if(ws!==socket || !me)return;
-    rosterReady=false;online.clear();renderPeople();
-    if(sending.size)toast("Yuborish tasdiqlanmadi. Qayta yuborishdan oldin tarixni tekshiring.",true);
-    sending.clear();updateComposer();
-    $("chatStatus").textContent="Ulanish tiklanmoqda...";
+    ws=null;disconnected();
     clearTimeout(reconnectTimer);
-    reconnectTimer=setTimeout(()=>{if(me && !app.classList.contains("hidden"))openSocket();},2800);
+    if(navigator.onLine!==false){
+      const delay=Math.min(15000,600*2**Math.min(reconnectAttempts++,5));
+      reconnectTimer=setTimeout(resumeConnection,delay+Math.random()*400);
+    }
   });
 }
 $("messageForm").addEventListener("submit", e=>{

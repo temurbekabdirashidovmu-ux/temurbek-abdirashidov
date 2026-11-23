@@ -6,6 +6,7 @@ import re
 import secrets
 import sqlite3
 import time
+from contextlib import nullcontext
 from collections import defaultdict, deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,6 +14,7 @@ from threading import Lock
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
+from starlette.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 import psycopg
@@ -277,12 +279,45 @@ async def emit(event,targets=None):
     for uid in list(clients) if targets is None else targets:
         if uid:await send_to(uid,event)
 
+def available_peer(peer):
+    with connect() as db:
+        return bool(db.execute("SELECT 1 FROM users WHERE id=? AND banned=0",(peer,)).fetchone())
+
+def erase_message(uid, mid):
+    with LOCK,connect() as db:
+        msg=db.execute("SELECT sender,recipient,media_id FROM messages WHERE id=?",(mid,)).fetchone()
+        if not msg or msg["sender"]!=uid:
+            return None
+        db.execute("DELETE FROM messages WHERE id=?",(mid,))
+        if msg["media_id"]:
+            db.execute("DELETE FROM media WHERE id=?",(msg["media_id"],))
+        db.commit()
+        return dict(msg)
+
+def save_message(uid, peer, body, media_id):
+    # Media ownership and single-use checks must complete together with the write.
+    with (LOCK if media_id else nullcontext()), connect() as db:
+        if peer:
+            exists=db.execute("SELECT 1 FROM users WHERE id=? AND banned=0",(peer,)).fetchone()
+            if not exists or peer==uid:
+                fail(400,"Shaxsiy suhbat foydalanuvchisi mavjud emas")
+        if media_id:
+            f=db.execute("SELECT owner FROM media WHERE id=?",(media_id,)).fetchone()
+            prev=db.execute("SELECT 1 FROM messages WHERE media_id=?",(media_id,)).fetchone()
+            if not f or f["owner"]!=uid or prev:
+                fail(400,"Fayl yuborilmadi yoki oldin ishlatilgan")
+        sent=datetime.now(timezone.utc).isoformat()
+        cur=db.execute("INSERT INTO messages(sender,recipient,body,media_id,sent) VALUES(?,?,?,?,?) RETURNING id",(uid,peer or None,body,media_id or None,sent))
+        mid=cur.fetchone()["id"]
+        db.commit()
+        return mid,sent
+
 @app.websocket("/ws")
 async def socket(ws:WebSocket):
     origin=ws.headers.get("origin","")
     if not origin or urlparse(origin).netloc.lower()!=ws.headers.get("host","").lower():
         await ws.close(code=1008);return
-    try:u=current(ws)
+    try:u=await run_in_threadpool(current,ws)
     except HTTPException:
         await ws.close(code=1008);return
     await ws.accept()
@@ -301,7 +336,7 @@ async def socket(ws:WebSocket):
             data=await ws.receive_json()
             if not isinstance(data, dict):
                 await ws.send_json({"type":"error","message":"Xabar formati noto'g'ri"});continue
-            try:now=current(ws)
+            try:await run_in_threadpool(current,ws)
             except HTTPException:
                 await ws.close(code=1008);break
             kind=data.get("type")
@@ -314,21 +349,16 @@ async def socket(ws:WebSocket):
                 try:peer=int(data.get("recipient") or 0)
                 except (ValueError,TypeError):continue
                 if peer<0 or peer==uid:continue
-                if peer:
-                    with connect() as db:
-                        allowed=db.execute("SELECT 1 FROM users WHERE id=? AND banned=0",(peer,)).fetchone()
-                    if not allowed:continue
+                if peer and not await run_in_threadpool(available_peer,peer):
+                    continue
                 await emit({"type":"typing","user":uid,"username":u["name"],"recipient":peer or None},[peer] if peer else [n for n in clients if n!=uid])
                 continue
             if kind=="delete":
                 try:mid=int(data.get("id"))
                 except (ValueError,TypeError):continue
-                with LOCK,connect() as db:
-                    msg=db.execute("SELECT sender,recipient,media_id FROM messages WHERE id=?",(mid,)).fetchone()
-                    if not msg or msg["sender"]!=uid:continue
-                    db.execute("DELETE FROM messages WHERE id=?",(mid,))
-                    if msg["media_id"]:db.execute("DELETE FROM media WHERE id=?",(msg["media_id"],))
-                    db.commit()
+                msg=await run_in_threadpool(erase_message,uid,mid)
+                if not msg:
+                    continue
                 await emit({"type":"deleted","id":mid},[uid,msg["recipient"]] if msg["recipient"] else None)
                 continue
             if kind!="message":continue
@@ -347,19 +377,11 @@ async def socket(ws:WebSocket):
             except (ValueError,TypeError):continue
             if peer<0 or media_id<0 or (not body and not media_id):
                 await ws.send_json({**receipt,"type":"error","message":"Bo'sh yoki noto'g'ri xabar"});continue
-            with LOCK,connect() as db:
-                if peer:
-                    exists=db.execute("SELECT 1 FROM users WHERE id=? AND banned=0",(peer,)).fetchone()
-                    if not exists or peer==uid:
-                        await ws.send_json({**receipt,"type":"error","message":"Shaxsiy suhbat foydalanuvchisi mavjud emas"});continue
-                if media_id:
-                    f=db.execute("SELECT owner FROM media WHERE id=?",(media_id,)).fetchone()
-                    prev=db.execute("SELECT 1 FROM messages WHERE media_id=?",(media_id,)).fetchone()
-                    if not f or f["owner"]!=uid or prev:
-                        await ws.send_json({**receipt,"type":"error","message":"Fayl yuborilmadi yoki oldin ishlatilgan"});continue
-                sent=datetime.now(timezone.utc).isoformat()
-                cur=db.execute("INSERT INTO messages(sender,recipient,body,media_id,sent) VALUES(?,?,?,?,?) RETURNING id",(uid,peer or None,body,media_id or None,sent))
-                mid=cur.fetchone()["id"];db.commit()
+            try:
+                mid,sent=await run_in_threadpool(save_message,uid,peer,body,media_id)
+            except HTTPException as exc:
+                await ws.send_json({**receipt,"type":"error","message":exc.detail})
+                continue
             event={"type":"message","id":mid,"sender":uid,"username":u["name"],"recipient":peer or None,"body":body,"media_id":media_id or None,"sent":sent}
             if receipt:
                 await send_to_socket(ws, {**receipt, "type":"saved", "id":mid})

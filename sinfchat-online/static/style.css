@@ -148,3 +148,5 @@ dialog::backdrop { background: #102e3080; }
 .history-error { align-self: center; margin: auto; text-align: center; color: var(--muted); }
 #jumpLatest { margin: 4px auto; }
 .send-btn:disabled { cursor: default; }
+
+#connectionNote { margin: 0; padding: .45rem 1rem; text-align: center; background: #fff1d3; color: #674607; font-size: .875rem; }
