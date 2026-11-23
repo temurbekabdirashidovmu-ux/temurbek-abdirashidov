@@ -242,7 +242,10 @@ function openSocket(){
   const protocol=location.protocol==="https:"?"wss:":"ws:";
   ws=new WebSocket(protocol+"//"+location.host+"/ws");
   const socket=ws;
-  ws.addEventListener("open",()=>{toast("Chatga ulandingiz");});
+  ws.addEventListener("open",()=>{
+    $("chatStatus").textContent="Ulandi";
+    toast("Chatga ulandingiz");
+  });
   ws.addEventListener("message", e=>{
     if(ws!==socket || !me)return;
     let d;try{d=JSON.parse(e.data)}catch{return;}
@@ -284,7 +287,8 @@ function openSocket(){
     if(ws!==socket || !me)return;
     rosterReady=false;online.clear();renderPeople();
     $("chatStatus").textContent="Ulanish tiklanmoqda...";
-    reconnectTimer=setTimeout(()=>{if(!app.classList.contains("hidden"))openSocket();},2800);
+    clearTimeout(reconnectTimer);
+    reconnectTimer=setTimeout(()=>{if(me && !app.classList.contains("hidden"))openSocket();},2800);
   });
 }
 $("messageForm").addEventListener("submit", e=>{
