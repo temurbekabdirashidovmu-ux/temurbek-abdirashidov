@@ -127,6 +127,10 @@ def index():
 def js():
     return FileResponse(HERE/"static"/"app.js",media_type="application/javascript")
 
+@app.get("/static/voice.js")
+def voice_js():
+    return FileResponse(HERE/"static"/"voice.js",media_type="application/javascript")
+
 @app.get("/static/photos.js")
 def photos_js():
     return FileResponse(HERE/"static"/"photos.js",media_type="application/javascript")

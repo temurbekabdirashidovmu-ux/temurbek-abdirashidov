@@ -1,6 +1,6 @@
 const $ = id => document.getElementById(id);
 const auth = $("authScreen"), app = $("app"), people = $("peopleList"), messages = $("messages");
-let registering = false, me = null, peer = 0, users = [], ws = null, recorder = null, chunks = [];
+let registering = false, me = null, peer = 0, users = [], ws = null;
 let online = new Set(), typingHide = null, toastHide = null, unread = new Set();
 
 const drafts = new Map();
@@ -109,6 +109,7 @@ function saveDraft(id, value){
 }
 function updateComposer(){
   refreshPhotoControls();
+  refreshVoiceControls();
   const pending=sending.has(peer);
   $("sendBtn").disabled=pending || !rosterReady || !$("messageInput").value.trim();
   $("sendBtn").setAttribute("aria-label",pending?"Yuborilmoqda":"Yuborish");
@@ -348,6 +349,7 @@ messages.addEventListener("scroll",()=>{
 });
 $("jumpLatest").onclick=scrollBottom;
 function addMessage(m, scroll=true, target=messages){
+  if(voiceDraft?.mediaId && m.media_id===voiceDraft.mediaId && m.sender===me.id)closeVoice();
   if(photoDraft?.mediaId && m.media_id===photoDraft.mediaId && m.sender===me.id)closePhotoDraft();
   if(messages.querySelector('[data-id="'+m.id+'"]'))return;
   const follow=scroll && (m.sender===me.id || nearBottom());
@@ -453,7 +455,7 @@ function openSocket(){
   ws.addEventListener("message", e=>{
     if(ws!==socket || !me)return;
     let d;try{d=JSON.parse(e.data)}catch{return;}
-    if(photoReceipt(d))return;
+    if(photoReceipt(d) || voiceReceipt(d))return;
     if(d.type==="saved"){finishSend(d);return;}
     if(d.type==="error"){finishSend(d);toast(d.message,true);return;}
     if(d.type==="online"){
@@ -528,37 +530,21 @@ $("messageInput").addEventListener("input",()=>{
   saveDraft(peer,$("messageInput").value);updateComposer();
   if(rosterReady && Date.now()-lastTyping>850){sendWS({type:"typing",recipient:peer||null});lastTyping=Date.now();}
 });
-async function sendVoice(blob,name,recipient){
-  const owner=me?.id;
-  if(blob.size>2*1024*1024){toast("2MB dan kichik ovozli xabar yuboring",true);return;}
-  const form=new FormData();form.append("file",blob,name);
-  try{
-    const result=await api("/api/media",{method:"POST",body:form});
-    if(me?.id!==owner)return;
-    if(!sendWS({type:"message",recipient:recipient||null,body:"[voice]",media_id:result.media_id}))toast("Ovozli xabar yuborilmadi",true);
-  }catch(e){toast(e.message,true);}
+async function uploadMediaOnce(draft,name,signal){
+  if(draft.mediaId)return;
+  const form=new FormData();
+  form.append("file",draft.blob,name);
+  const result=await api("/api/media",{method:"POST",body:form,signal});
+  draft.mediaId=result.media_id;
 }
 setupPhotoTools();
-$("micBtn").onclick=async()=>{
-  if(recorder && recorder.state==="recording"){recorder.stop();$("micBtn").textContent="🎙";return;}
-  if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){toast("Brauzeringiz ovoz yozishni qo‘llamaydi",true);return;}
-  try{
-    const recipient=peer, owner=me.id;
-    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-    const mime=MediaRecorder.isTypeSupported("audio/webm")?"audio/webm":(MediaRecorder.isTypeSupported("audio/ogg")?"audio/ogg":"");
-    if(!mime){stream.getTracks().forEach(t=>t.stop());toast("Ushbu brauzer audio formatini qo‘llamaydi",true);return;}
-    chunks=[];recorder=new MediaRecorder(stream,{mimeType:mime,audioBitsPerSecond:64000});
-    recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};
-    recorder.onstop=()=>{stream.getTracks().forEach(t=>t.stop());if(me?.id===owner)sendVoice(new Blob(chunks,{type:mime}),"voice."+mime.split("/")[1],recipient);};
-    recorder.start();$("micBtn").textContent="⏹";toast("Ovoz yozilmoqda. Tugatish uchun ⏹ ni bosing.");
-  }catch{toast("Mikrofon ruxsati berilmadi",true);}
-};
+setupVoiceTools();
 $("logoutBtn").onclick=async()=>{
   try{await api("/api/logout",{method:"POST",body:"{}"});}catch(e){toast("Chiqish amalga oshmadi. Qayta urining.",true);return;}
   closePhotoDraft();$("pictureViewer").close();
   clearSearch();$("findDialog").close();quotes.clear();showQuote();
   try{sessionStorage.removeItem(draftKey());sessionStorage.removeItem(draftKey()+".quotes");}catch{}
-  if(recorder?.state==="recording"){recorder.stop();$("micBtn").textContent="🎙";}
+  closeVoice();
   if(ws){ws.onclose=null;ws.close();ws=null;}
   clearTimeout(reconnectTimer);
   clearTimeout(historyFallback);

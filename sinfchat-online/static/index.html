@@ -6,9 +6,10 @@
   <meta name="theme-color" content="#113c3e">
   <meta name="description" content="SinfChat — sinfdoshlar uchun shaxsiy, real vaqtda ishlaydigan messenjer.">
   <title>SinfChat Online — Bizning sinf</title>
-  <link rel="stylesheet" href="/static/style.css?v=photo7">
-  <script src="/static/photos.js?v=photo7" defer></script>
-  <script src="/static/app.js?v=photo7" defer></script>
+  <link rel="stylesheet" href="/static/style.css?v=voice8">
+  <script src="/static/voice.js?v=voice8" defer></script>
+  <script src="/static/photos.js?v=voice8" defer></script>
+  <script src="/static/app.js?v=voice8" defer></script>
 </head>
 <body>
   <section class="auth-screen" id="authScreen">
@@ -77,13 +78,25 @@
       <form id="messageForm" class="composer">
         <button type="button" class="icon-btn attach" id="attachPhoto" aria-label="Rasm tanlash" title="Rasm tanlash">＋</button>
         <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>
-        <button class="icon-btn" type="button" id="micBtn" title="Ovozli xabar">🎙</button>
+        <button class="icon-btn" type="button" id="micBtn" aria-label="Ovozli xabar yozish" aria-haspopup="dialog" title="Ovozli xabar">🎙</button>
         <input aria-label="Xabar matni" id="messageInput" placeholder="Xabar yozing..." maxlength="2000" autocomplete="off">
         <button class="send-btn" id="sendBtn" disabled type="submit" aria-label="Yuborish">➤</button>
       </form>
     </main>
   </div>
   <div id="toast" class="toast" role="status"></div>
+  <dialog id="voiceDialog" aria-labelledby="voiceTitle">
+    <div class="dialog-head"><strong id="voiceTitle">Ovozli xabar</strong><button type="button" id="voiceClose" aria-label="Bekor qilish va yopish">×</button></div>
+    <p id="voiceRoom" class="photo-room"></p>
+    <div class="voice-stage"><span id="voiceIndicator" aria-hidden="true"></span><output id="voiceTime" aria-label="Yozuv davomiyligi" aria-live="off">0:00</output></div>
+    <audio id="voicePreview" controls hidden aria-label="Yozuvni tinglash"></audio>
+    <p id="voiceStatus" role="status"></p>
+    <div class="voice-actions">
+      <button type="button" class="primary" id="voiceStop" hidden>Yozishni tugatish</button>
+      <button type="button" class="archive-button" id="voiceRedo" hidden>Qayta yozish</button>
+      <button type="button" class="primary" id="voiceSend" hidden>Yuborish</button>
+    </div>
+  </dialog>
   <dialog id="photoDialog" aria-labelledby="photoTitle">
     <div class="dialog-head"><strong id="photoTitle">Rasm yuborish</strong><button type="button" id="photoClose" aria-label="Yopish">×</button></div>
     <p id="photoRoom" class="photo-room"></p>

@@ -85,12 +85,7 @@ async function sendPhoto(event){
   const controller=new AbortController();
   const timeout=setTimeout(()=>controller.abort(),45000);
   try{
-    if(!draft.mediaId){
-      const form=new FormData();
-      form.append("file",draft.blob,"rasm."+draft.blob.type.split("/")[1]);
-      const result=await api("/api/media",{method:"POST",body:form,signal:controller.signal});
-      draft.mediaId=result.media_id;
-    }
+    await uploadMediaOnce(draft,"rasm."+draft.blob.type.split("/")[1],controller.signal);
     if(photoDraft!==draft || me?.id!==draft.owner)return;
     draft.tag=crypto.randomUUID();
     if(!sendWS({type:"message",recipient:draft.room||null,body:caption,media_id:draft.mediaId,tag:draft.tag})){
