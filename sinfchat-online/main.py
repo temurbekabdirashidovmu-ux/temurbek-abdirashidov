@@ -214,7 +214,7 @@ def reports(request:Request):
     return [dict(x) for x in rows]
 
 @app.post("/api/admin/ban")
-def ban(data:Ban,request:Request):
+async def ban(data:Ban,request:Request):
     u=current(request)
     if not u["admin"]: fail(403,"Admin emas")
     with LOCK, connect() as db:
@@ -223,6 +223,13 @@ def ban(data:Ban,request:Request):
         db.execute("UPDATE users SET banned=? WHERE id=?",(int(data.banned),data.user_id))
         if data.banned: db.execute("DELETE FROM sessions WHERE uid=?",(data.user_id,))
         db.commit()
+    if data.banned:
+        # Revoke active websocket access immediately, not just future HTTP requests.
+        for active_socket in list(clients.get(data.user_id, set())):
+            try:
+                await active_socket.close(code=1008, reason="Account restricted")
+            except (RuntimeError, OSError):
+                pass
     return {"ok":True}
 
 @app.post("/api/media")
