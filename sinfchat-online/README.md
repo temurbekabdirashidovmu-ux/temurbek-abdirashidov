@@ -11,7 +11,7 @@ uvicorn main:app --reload
 ```
 
 ## Render
-Branch: `sinfchat-online-deploy`
+Branch: `sinfchat-durable-history`
 Build command: `pip install -r sinfchat-online/requirements.txt`
 Start command: `cd sinfchat-online && uvicorn main:app --host 0.0.0.0 --port $PORT --proxy-headers`
 
