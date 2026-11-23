@@ -6,6 +6,7 @@ let online = new Set(), typingHide = null, toastHide = null, unread = new Set();
 const drafts = new Map();
 let historyVersion = 0, pendingHistory = null, oldest = null, reconnectTimer;
 let rosterReady = false, legacyMode = false, importing = false;
+let socketHasConnected = false;
 
 async function api(url, options = {}) {
   const response = await fetch(url, {
@@ -72,6 +73,7 @@ $("authForm").addEventListener("submit",async e=>{
 
 async function initialize(){
   me=await api("/api/me");
+  socketHasConnected=false;
   auth.classList.add("hidden"); app.classList.remove("hidden");
   $("myName").textContent="@"+me.username;
   $("myAvatar").textContent=me.username[0].toUpperCase();
@@ -243,8 +245,16 @@ function openSocket(){
   ws=new WebSocket(protocol+"//"+location.host+"/ws");
   const socket=ws;
   ws.addEventListener("open",()=>{
-    $("chatStatus").textContent="Ulandi";
-    toast("Chatga ulandingiz");
+    if(ws!==socket || !me)return;
+    const returning=socketHasConnected;
+    socketHasConnected=true;
+    toast(returning?"Ulanish qayta tiklandi":"Chatga ulandingiz");
+    if(returning) {
+      // A lost connection may have missed incoming messages and deletions.
+      const selected=peer;
+      choose(selected);
+      refreshPeople();
+    }
   });
   ws.addEventListener("message", e=>{
     if(ws!==socket || !me)return;
@@ -336,7 +346,7 @@ $("logoutBtn").onclick=async()=>{
   if(ws){ws.onclose=null;ws.close();ws=null;}
   clearTimeout(reconnectTimer);
   historyVersion++;pendingHistory=null;
-  online.clear();unread.clear();drafts.clear();users=[];rosterReady=false;
+  online.clear();unread.clear();drafts.clear();users=[];rosterReady=false;socketHasConnected=false;
   $("archiveDialog").close();$("archiveContent").replaceChildren();$("archivePass").value="";$("messageInput").value="";
   $("onlineDialog").close();
   me=null;app.classList.add("hidden");auth.classList.remove("hidden");app.classList.remove("chat-open");authMode(false);
