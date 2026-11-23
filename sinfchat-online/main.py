@@ -16,6 +16,7 @@ from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile,
 from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 import psycopg
+import legacy
 from storage import connect, init_schema
 
 HERE = Path(__file__).parent
@@ -92,6 +93,8 @@ async def security(request, call_next):
     response.headers["X-Frame-Options"]="DENY"
     response.headers["Referrer-Policy"]="no-referrer"
     response.headers["Content-Security-Policy"]="default-src 'self'; img-src 'self' data:; media-src 'self' blob:; style-src 'self'; script-src 'self'; connect-src 'self' wss: ws:; frame-ancestors 'none'"
+    if request.url.path.startswith(("/api/","/media/")):
+        response.headers["Cache-Control"]="private, no-store"
     return response
 
 @app.get("/")
@@ -154,6 +157,7 @@ def logout(request:Request,response:Response):
     with LOCK,connect() as db:
         db.execute("DELETE FROM sessions WHERE token=?",(hashlib.sha256(token.encode()).hexdigest(),))
         db.commit()
+    response.delete_cookie(legacy.COOKIE,path="/api/legacy")
     response.delete_cookie("sinfchat_session")
     return {"ok":True}
 
@@ -330,3 +334,24 @@ async def socket(ws:WebSocket):
             clients.pop(uid,None)
             online_names.pop(uid,None)
             await emit({"type":"presence","user":uid,"online":False})
+
+@app.post("/api/legacy/link")
+def legacy_link(data: Credentials, request: Request, response: Response):
+    throttle("legacy:"+request.client.host,15,300)
+    return legacy.link(request,response,data,current=current,digest=digest,session_cookie=session_cookie,lock=LOCK)
+
+@app.get("/api/legacy/sources")
+def legacy_sources(request: Request):
+    return legacy.sources(request,current(request))
+
+@app.post("/api/legacy/import")
+def import_history(request: Request, peer:int=0, after:int=0):
+    return legacy.import_page(request,current(request),peer,after,LOCK)
+
+@app.get("/api/archive")
+def archive(request: Request, chat:str|None=None):
+    user=current(request)
+    with connect() as db:
+        rows=(db.execute(legacy.LIST,(user["id"],)) if chat is None else
+              db.execute(legacy.READ,(user["id"],chat))).fetchall()
+    return [dict(row) for row in rows]

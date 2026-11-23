@@ -3,22 +3,24 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#111b31">
+  <meta name="theme-color" content="#113c3e">
   <meta name="description" content="SinfChat — sinfdoshlar uchun shaxsiy, real vaqtda ishlaydigan messenjer.">
   <title>SinfChat Online — Bizning sinf</title>
-  <link rel="stylesheet" href="/static/style.css">
-  <script src="/static/app.js" defer></script>
+  <link rel="stylesheet" href="/static/style.css?v=archive1">
+  <script src="/static/app.js?v=archive1" defer></script>
 </head>
 <body>
   <section class="auth-screen" id="authScreen">
-    <div class="orb a"></div><div class="orb b"></div>
+    <div class="welcome">
+      <div class="class-mark" aria-hidden="true"><i></i><b></b></div>
+      <h1>Sinf<span>Chat</span></h1>
+      <p>Sinf guruhi va shaxsiy suhbatlaringiz.</p>
+    </div>
     <div class="auth-card">
-      <div class="brand-logo">✦</div>
-      <div class="auth-title">Sinf<span>Chat</span></div>
-      <p class="auth-lead">Sinfdoshlaring bilan doimo aloqada bo‘l.</p>
+      <h2 id="authHeading">Akkauntga kirish</h2>
       <div class="tabs"><button id="loginTab" class="active">Kirish</button><button id="registerTab">Ro‘yxatdan o‘tish</button></div>
       <form id="authForm">
-        <label>Username<input id="authUser" autocomplete="username" placeholder="masalan: temur" minlength="3" maxlength="24" required></label>
+        <label>Foydalanuvchi nomi<input id="authUser" autocomplete="username" placeholder="masalan: temur" minlength="3" maxlength="24" required></label>
         <label>Parol<input id="authPass" type="password" autocomplete="current-password" placeholder="Kamida 8 belgi" minlength="8" required></label>
         <div id="registerFields" class="hidden">
           <label>Sinf taklif kodi<input id="invite" type="password" autocomplete="off" placeholder="Sinfdan olgan kodingiz"></label>
@@ -29,24 +31,25 @@
         <button class="primary full" id="authSubmit" type="submit">Kirish</button>
         <p class="error" id="authError" role="alert"></p>
       </form>
-      <p class="auth-note">Faqat sinf a’zolari uchun. Parolingizni hech kimga bermang.</p>
+      <button class="link-button" type="button" id="legacyLogin">Eski SinfChat akkauntini ko‘chirish</button>
+      <p id="legacyHint" class="form-note" hidden>Nom va parolingiz eski SinfChat serverida tekshiriladi. Tasdiqlansa, yangi saytga shu ma’lumotlar bilan kirasiz.</p>
     </div>
   </section>
 
   <div class="app hidden" id="app">
     <aside class="sidebar" id="sidebar">
       <header class="sidebar-head">
-        <div class="logo-small">✦</div><div class="brand-small">Sinf<span>Chat</span><small>ONLINE</small></div>
+        <div class="mini-mark" aria-hidden="true"></div><div class="brand-small">Sinf<span>Chat</span></div>
         <button class="icon-btn" id="logoutBtn" title="Chiqish">⇥</button>
       </header>
       <div class="profile"><div class="avatar me" id="myAvatar">S</div>
         <div class="profile-text"><strong id="myName">Username</strong><span>Mening akkauntim</span></div>
-        <span class="profile-dot"></span>
+        <button type="button" id="openArchive" class="archive-button">Arxiv</button>
       </div>
-      <div class="sidebar-search"><span>⌕</span><input id="searchInput" placeholder="Sinfdoshni qidirish..." autocomplete="off"></div>
+      <div class="sidebar-search"><span>⌕</span><input aria-label="Sinfdoshni qidirish" id="searchInput" placeholder="Sinfdoshni qidirish..." autocomplete="off"></div>
       <div class="side-label">GURUHLAR</div>
       <button class="conversation selected" id="groupBtn">
-        <div class="group-avatar">👥</div>
+        <div class="group-avatar" aria-hidden="true">#</div>
         <div class="conv-text"><strong>Bizning sinf</strong><span>Umumiy sinf guruhi</span></div>
         <span class="conv-meta" id="groupUnread"></span>
       </button>
@@ -58,7 +61,7 @@
     <main class="chat">
       <header class="chat-head">
         <button class="icon-btn back" id="backBtn" aria-label="Ortga">‹</button>
-        <div class="chat-icon" id="chatAvatar">👥</div>
+        <div class="chat-icon" id="chatAvatar">#</div>
         <div class="chat-info"><strong id="chatName">Bizning sinf</strong><span id="chatStatus">Sinfdoshlar guruhi</span></div>
         <button class="online-count" id="showOnline" aria-haspopup="dialog">Ulanmoqda…</button>
         <button class="icon-btn" id="adminBtn" title="Administrator" hidden>⚙</button>
@@ -70,18 +73,30 @@
         <label class="icon-btn attach" for="imageInput" title="Rasm yuborish">＋</label>
         <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>
         <button class="icon-btn" type="button" id="micBtn" title="Ovozli xabar">🎙</button>
-        <input id="messageInput" placeholder="Xabar yozing..." maxlength="2000" autocomplete="off">
+        <input aria-label="Xabar matni" id="messageInput" placeholder="Xabar yozing..." maxlength="2000" autocomplete="off">
         <button class="send-btn" type="submit" aria-label="Yuborish">➤</button>
       </form>
     </main>
   </div>
   <div id="toast" class="toast" role="status"></div>
+  <dialog id="archiveDialog" aria-labelledby="archiveTitle">
+    <div class="dialog-head"><strong id="archiveTitle">Mening arxivim</strong><button id="archiveClose" aria-label="Yopish">×</button></div>
+    <p class="form-note">Ko‘chirilgan suhbatlar faqat sizga ko‘rinadi. Eski server har bir suhbatning oxirgi 150 ta mavjud xabarini beradi.</p>
+    <form id="archiveLink" hidden>
+      <label>Eski SinfChat paroli<input id="archivePass" type="password" minlength="8" maxlength="128" autocomplete="current-password"></label>
+      <button class="primary" type="submit">Eski serverda tasdiqlash</button>
+    </form>
+    <button id="archiveImport" class="archive-button">Eski suhbatlarni ko‘chirish</button>
+    <p id="archiveState" role="status"></p>
+    <div id="archiveChats"></div>
+    <section id="archiveContent"></section>
+  </dialog>
   <dialog id="onlineDialog" aria-labelledby="onlineTitle">
     <div class="dialog-head"><strong id="onlineTitle">Hozir onlayn</strong><button id="closeOnline" aria-label="Yopish">×</button></div>
     <ul id="onlineList"></ul>
   </dialog>
   <dialog id="adminDialog">
-    <div class="dialog-head"><strong>Administrator paneli</strong><button id="closeAdmin">×</button></div>
+    <div class="dialog-head"><strong>Administrator paneli</strong><button id="closeAdmin" aria-label="Yopish">×</button></div>
     <p>Shikoyatlar va foydalanuvchilar</p>
     <div id="adminContent">Yuklanmoqda...</div>
   </dialog>
