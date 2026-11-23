@@ -286,6 +286,7 @@ async def socket(ws:WebSocket):
     clients[uid].add(ws)
     online_names[uid] = u["name"]
     recent = deque()
+    recent_typing = deque()
     try:
         await ws.send_json({"type":"online", "users":list(clients),
                             "members":[{"id":k, "username":v} for k,v in online_names.items()]})
@@ -301,7 +302,10 @@ async def socket(ws:WebSocket):
             kind=data.get("type")
             if kind=="typing":
                 nowtime=time.monotonic()
-                if recent and nowtime-recent[-1]<0.15:continue
+                while recent_typing and nowtime-recent_typing[0]>10:
+                    recent_typing.popleft()
+                if len(recent_typing)>=25:continue
+                recent_typing.append(nowtime)
                 try:peer=int(data.get("recipient") or 0)
                 except (ValueError,TypeError):continue
                 if peer<0 or peer==uid:continue
@@ -328,18 +332,24 @@ async def socket(ws:WebSocket):
             if len(recent)>=12:
                 await ws.send_json({"type":"error","message":"Juda tez yozayapsiz"});continue
             recent.append(nowtime)
-            body=str(data.get("body") or "").strip()[:2000]
+            body_value=data.get("body") or ""
+            if not isinstance(body_value, str) or len(body_value)>2000:
+                await ws.send_json({"type":"error","message":"Xabar 2000 belgidan oshmasligi kerak"});continue
+            body=body_value.strip()
             try:peer=int(data.get("recipient") or 0);media_id=int(data.get("media_id") or 0)
             except (ValueError,TypeError):continue
-            if peer<0 or media_id<0 or (not body and not media_id):continue
+            if peer<0 or media_id<0 or (not body and not media_id):
+                await ws.send_json({"type":"error","message":"Bo'sh yoki noto'g'ri xabar"});continue
             with LOCK,connect() as db:
                 if peer:
                     exists=db.execute("SELECT 1 FROM users WHERE id=? AND banned=0",(peer,)).fetchone()
-                    if not exists or peer==uid:continue
+                    if not exists or peer==uid:
+                        await ws.send_json({"type":"error","message":"Shaxsiy suhbat foydalanuvchisi mavjud emas"});continue
                 if media_id:
                     f=db.execute("SELECT owner FROM media WHERE id=?",(media_id,)).fetchone()
                     prev=db.execute("SELECT 1 FROM messages WHERE media_id=?",(media_id,)).fetchone()
-                    if not f or f["owner"]!=uid or prev:continue
+                    if not f or f["owner"]!=uid or prev:
+                        await ws.send_json({"type":"error","message":"Fayl yuborilmadi yoki oldin ishlatilgan"});continue
                 sent=datetime.now(timezone.utc).isoformat()
                 cur=db.execute("INSERT INTO messages(sender,recipient,body,media_id,sent) VALUES(?,?,?,?,?) RETURNING id",(uid,peer or None,body,media_id or None,sent))
                 mid=cur.fetchone()["id"];db.commit()
