@@ -92,6 +92,8 @@ async def security(request, call_next):
     response.headers["X-Content-Type-Options"]="nosniff"
     response.headers["X-Frame-Options"]="DENY"
     response.headers["Referrer-Policy"]="no-referrer"
+    response.headers["Permissions-Policy"]="camera=(), geolocation=(), microphone=(self)"
+    response.headers["Cross-Origin-Resource-Policy"]="same-origin"
     response.headers["Content-Security-Policy"]="default-src 'self'; img-src 'self' data:; media-src 'self' blob:; style-src 'self'; script-src 'self'; connect-src 'self' wss: ws:; frame-ancestors 'none'"
     if request.url.path.startswith(("/api/","/media/")):
         response.headers["Cache-Control"]="private, no-store"
@@ -284,13 +286,22 @@ async def socket(ws:WebSocket):
             await emit({"type":"presence","user":uid,"username":u["name"],"online":True})
         while True:
             data=await ws.receive_json()
+            if not isinstance(data, dict):
+                await ws.send_json({"type":"error","message":"Xabar formati noto'g'ri"});continue
             try:now=current(ws)
             except HTTPException:
                 await ws.close(code=1008);break
             kind=data.get("type")
             if kind=="typing":
+                nowtime=time.monotonic()
+                if recent and nowtime-recent[-1]<0.15:continue
                 try:peer=int(data.get("recipient") or 0)
                 except (ValueError,TypeError):continue
+                if peer<0 or peer==uid:continue
+                if peer:
+                    with connect() as db:
+                        allowed=db.execute("SELECT 1 FROM users WHERE id=? AND banned=0",(peer,)).fetchone()
+                    if not allowed:continue
                 await emit({"type":"typing","user":uid,"username":u["name"],"recipient":peer or None},[peer] if peer else [n for n in clients if n!=uid])
                 continue
             if kind=="delete":
