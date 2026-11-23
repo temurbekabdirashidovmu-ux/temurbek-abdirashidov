@@ -167,3 +167,15 @@ dialog::backdrop { background: #102e3080; }
   .bubble-meta { flex-wrap: wrap; gap: 4px 10px; }
   .bubble-meta button { min-height: 32px; padding: 3px 5px; }
 }
+.photo-thumb { display: block; max-width: 100%; border: 0; padding: 0; border-radius: 10px; background: transparent; cursor: zoom-in; }
+.photo-room, #photoStatus { color: var(--muted); font-size: .9rem; margin: .55rem 0 .85rem; }
+.photo-stage { display: grid; place-items: center; background: #e8efeb; border-radius: 12px; overflow: hidden; margin-bottom: 14px; }
+.photo-stage img { display: block; max-width: 100%; max-height: 40dvh; object-fit: contain; }
+#photoCaption { width: 100%; padding: .7rem; border: 1px solid var(--line); border-radius: 8px; font: inherit; resize: vertical; }
+#pictureViewer { width: min(1100px,96vw); max-height: 94dvh; padding: 14px; }
+.viewer-actions { display: flex; gap: 8px; align-items: center; }
+#pictureZoom { font-size: .875rem; min-height: 36px; }
+#pictureViewport { height: min(72dvh,850px); overflow: auto; margin-top: 10px; border-radius: 10px; background: #172b2c; }
+#pictureFull { display: block; width: 100%; height: 100%; object-fit: contain; }
+#pictureViewport.zoomed img { width: auto; height: auto; max-width: none; min-width: 100%; }
+#pictureCaption { overflow-wrap: anywhere; white-space: pre-wrap; margin: 10px 0 0; }

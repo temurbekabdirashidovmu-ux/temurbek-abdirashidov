@@ -114,7 +114,7 @@ async def security(request, call_next):
     response.headers["Referrer-Policy"]="no-referrer"
     response.headers["Permissions-Policy"]="camera=(), geolocation=(), microphone=(self)"
     response.headers["Cross-Origin-Resource-Policy"]="same-origin"
-    response.headers["Content-Security-Policy"]="default-src 'self'; img-src 'self' data:; media-src 'self' blob:; style-src 'self'; script-src 'self'; connect-src 'self' wss: ws:; frame-ancestors 'none'"
+    response.headers["Content-Security-Policy"]="default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self'; script-src 'self'; connect-src 'self' wss: ws:; frame-ancestors 'none'"
     if request.url.path.startswith(("/api/","/media/")):
         response.headers["Cache-Control"]="private, no-store"
     return response
@@ -126,6 +126,10 @@ def index():
 @app.get("/static/app.js")
 def js():
     return FileResponse(HERE/"static"/"app.js",media_type="application/javascript")
+
+@app.get("/static/photos.js")
+def photos_js():
+    return FileResponse(HERE/"static"/"photos.js",media_type="application/javascript")
 
 @app.get("/static/style.css")
 def css():

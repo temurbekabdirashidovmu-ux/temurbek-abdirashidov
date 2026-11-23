@@ -108,6 +108,7 @@ function saveDraft(id, value){
   } catch {}
 }
 function updateComposer(){
+  refreshPhotoControls();
   const pending=sending.has(peer);
   $("sendBtn").disabled=pending || !rosterReady || !$("messageInput").value.trim();
   $("sendBtn").setAttribute("aria-label",pending?"Yuborilmoqda":"Yuborish");
@@ -347,6 +348,7 @@ messages.addEventListener("scroll",()=>{
 });
 $("jumpLatest").onclick=scrollBottom;
 function addMessage(m, scroll=true, target=messages){
+  if(photoDraft?.mediaId && m.media_id===photoDraft.mediaId && m.sender===me.id)closePhotoDraft();
   if(messages.querySelector('[data-id="'+m.id+'"]'))return;
   const follow=scroll && (m.sender===me.id || nearBottom());
   const intro=messages.querySelector(".empty");
@@ -367,7 +369,7 @@ function addMessage(m, scroll=true, target=messages){
     if(m.body==="[voice]"){
       const player=document.createElement("audio");player.controls=true;player.preload="none";player.src="/media/"+m.media_id;bubble.append(player);
     }else{
-      const picture=document.createElement("img");picture.src="/media/"+m.media_id;picture.alt="Yuborilgan rasm";picture.loading="lazy";bubble.append(picture);
+      bubble.append(photoThumbnail(m.media_id,m.body,m.username,m.id));
     }
   }
   const meta=document.createElement("div");meta.className="bubble-meta";
@@ -451,6 +453,7 @@ function openSocket(){
   ws.addEventListener("message", e=>{
     if(ws!==socket || !me)return;
     let d;try{d=JSON.parse(e.data)}catch{return;}
+    if(photoReceipt(d))return;
     if(d.type==="saved"){finishSend(d);return;}
     if(d.type==="error"){finishSend(d);toast(d.message,true);return;}
     if(d.type==="online"){
@@ -477,6 +480,7 @@ function openSocket(){
       return;
     }
     if(d.type==="deleted"){
+      if(viewedMessage===d.id)$("pictureViewer").close();
       if(searchRun){
         searchRun.deleted.add(d.id);
         const result=$("findResults").querySelector('[data-id="'+d.id+'"]');
@@ -524,21 +528,17 @@ $("messageInput").addEventListener("input",()=>{
   saveDraft(peer,$("messageInput").value);updateComposer();
   if(rosterReady && Date.now()-lastTyping>850){sendWS({type:"typing",recipient:peer||null});lastTyping=Date.now();}
 });
-async function uploadAndSend(blob,name,type,voice=false,recipient=peer){
+async function sendVoice(blob,name,recipient){
   const owner=me?.id;
-  if(blob.size>2*1024*1024){toast("2MB dan kichik fayl yuboring",true);return;}
+  if(blob.size>2*1024*1024){toast("2MB dan kichik ovozli xabar yuboring",true);return;}
   const form=new FormData();form.append("file",blob,name);
   try{
     const result=await api("/api/media",{method:"POST",body:form});
     if(me?.id!==owner)return;
-    if(!sendWS({type:"message",recipient:recipient||null,body:voice?"[voice]":"",media_id:result.media_id}))toast("Fayl yuborilmadi",true);
+    if(!sendWS({type:"message",recipient:recipient||null,body:"[voice]",media_id:result.media_id}))toast("Ovozli xabar yuborilmadi",true);
   }catch(e){toast(e.message,true);}
 }
-$("imageInput").addEventListener("change",async e=>{
-  const file=e.target.files[0];if(!file)return;
-  await uploadAndSend(file,file.name,file.type,false);
-  e.target.value="";
-});
+setupPhotoTools();
 $("micBtn").onclick=async()=>{
   if(recorder && recorder.state==="recording"){recorder.stop();$("micBtn").textContent="🎙";return;}
   if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){toast("Brauzeringiz ovoz yozishni qo‘llamaydi",true);return;}
@@ -549,12 +549,13 @@ $("micBtn").onclick=async()=>{
     if(!mime){stream.getTracks().forEach(t=>t.stop());toast("Ushbu brauzer audio formatini qo‘llamaydi",true);return;}
     chunks=[];recorder=new MediaRecorder(stream,{mimeType:mime,audioBitsPerSecond:64000});
     recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};
-    recorder.onstop=()=>{stream.getTracks().forEach(t=>t.stop());if(me?.id===owner)uploadAndSend(new Blob(chunks,{type:mime}),"voice."+mime.split("/")[1],mime,true,recipient);};
+    recorder.onstop=()=>{stream.getTracks().forEach(t=>t.stop());if(me?.id===owner)sendVoice(new Blob(chunks,{type:mime}),"voice."+mime.split("/")[1],recipient);};
     recorder.start();$("micBtn").textContent="⏹";toast("Ovoz yozilmoqda. Tugatish uchun ⏹ ni bosing.");
   }catch{toast("Mikrofon ruxsati berilmadi",true);}
 };
 $("logoutBtn").onclick=async()=>{
   try{await api("/api/logout",{method:"POST",body:"{}"});}catch(e){toast("Chiqish amalga oshmadi. Qayta urining.",true);return;}
+  closePhotoDraft();$("pictureViewer").close();
   clearSearch();$("findDialog").close();quotes.clear();showQuote();
   try{sessionStorage.removeItem(draftKey());sessionStorage.removeItem(draftKey()+".quotes");}catch{}
   if(recorder?.state==="recording"){recorder.stop();$("micBtn").textContent="🎙";}
@@ -634,11 +635,9 @@ async function listArchive(){
             const p=document.createElement("p");p.textContent=m.body;row.append(p);
           }
           if(m.media_id){
-            const file=document.createElement(m.body==="[voice]"?"audio":"img");
-            file.src="/media/"+m.media_id;
-            if(file.tagName==="AUDIO"){file.controls=true;file.preload="none";}
-            else{file.loading="lazy";file.alt="Arxivdagi rasm";}
-            row.append(file);
+            if(m.body==="[voice]"){
+              const file=document.createElement("audio");file.controls=true;file.preload="none";file.src="/media/"+m.media_id;row.append(file);
+            }else row.append(photoThumbnail(m.media_id,m.body,m.author));
           }else if(m.attachment){row.append(document.createTextNode("Fayl eski serverda mavjud emas."));}
           content.append(row);
         }
