@@ -6,11 +6,11 @@ import re
 import secrets
 import sqlite3
 import time
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from collections import defaultdict, deque
 from datetime import datetime, timezone
 from pathlib import Path
-from threading import Lock
+from threading import BoundedSemaphore, Lock
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
@@ -27,6 +27,8 @@ ADMIN_CODE = os.environ.get("ADMIN_SETUP_CODE", "")
 LOCK = Lock()
 clients = defaultdict(set)
 attempts = defaultdict(deque)
+ATTEMPT_LOCK = Lock()
+AUTH_SLOTS = BoundedSemaphore(8)
 
 online_names = {}
 
@@ -65,13 +67,29 @@ def current(request):
     return dict(row)
 
 def throttle(key, maximum=20, window=60):
-    now = time.monotonic()
-    q = attempts[key]
-    while q and now-q[0]>window:
-        q.popleft()
-    if len(q)>=maximum:
-        fail(429,"Juda ko'p urinish")
-    q.append(now)
+    with ATTEMPT_LOCK:
+        now = time.monotonic()
+        q = attempts[key]
+        while q and now-q[0]>window:
+            q.popleft()
+        if len(q)>=maximum:
+            fail(429,"Urinishlar ko‘payib ketdi. Birozdan keyin qayta urining.")
+        q.append(now)
+        return now
+
+@contextmanager
+def classroom_auth(key, maximum_failures, window):
+    # A whole class may share one public address. Count failed attempts separately.
+    throttle("total:"+key,90,window)
+    with AUTH_SLOTS:
+        stamp=throttle(key,maximum_failures,window)
+        yield
+        with ATTEMPT_LOCK:
+            q=attempts.get(key)
+            if q and stamp in q:
+                q.remove(stamp)
+                if not q:
+                    del attempts[key]
 
 def session_cookie(response, uid, request):
     token = secrets.token_urlsafe(36)
@@ -124,36 +142,36 @@ def robots():
 
 @app.post("/api/register")
 def register(data:Credentials,request:Request,response:Response):
-    throttle("register:"+request.client.host,10,3600)
-    if len(INVITE_CODE)<8 or not hmac.compare_digest(data.invite_code,INVITE_CODE):
-        fail(403,"Taklif kodi xato yoki sozlanmagan")
-    name=data.username.strip().lower()
-    if not re.fullmatch(r"[a-z][a-z0-9_]{2,23}",name):
-        fail(400,"Username faqat lotin harflari, raqamlar va _")
-    if data.admin_code and (len(ADMIN_CODE)<12 or not hmac.compare_digest(data.admin_code,ADMIN_CODE)):
-        fail(403,"Admin kodi noto'g'ri")
-    salt=secrets.token_hex(16)
-    try:
-        with LOCK,connect() as db:
-            if data.admin_code and db.execute("SELECT 1 FROM users WHERE admin=1").fetchone():
-                fail(409,"Admin allaqachon mavjud")
-            cur=db.execute("INSERT INTO users(name,salt,password,admin) VALUES(?,?,?,?) RETURNING id",(name,salt,digest(data.password,salt),int(bool(data.admin_code))))
-            uid=cur.fetchone()["id"]
-            db.commit()
-    except (sqlite3.IntegrityError, psycopg.errors.UniqueViolation):
-        fail(409,"Bu username band")
-    session_cookie(response,uid,request)
-    return {"ok":True}
+    with classroom_auth("register:"+request.client.host,10,3600):
+        if len(INVITE_CODE)<8 or not hmac.compare_digest(data.invite_code,INVITE_CODE):
+            fail(403,"Taklif kodi xato yoki sozlanmagan")
+        name=data.username.strip().lower()
+        if not re.fullmatch(r"[a-z][a-z0-9_]{2,23}",name):
+            fail(400,"Username faqat lotin harflari, raqamlar va _")
+        if data.admin_code and (len(ADMIN_CODE)<12 or not hmac.compare_digest(data.admin_code,ADMIN_CODE)):
+            fail(403,"Admin kodi noto'g'ri")
+        salt=secrets.token_hex(16)
+        try:
+            with LOCK,connect() as db:
+                if data.admin_code and db.execute("SELECT 1 FROM users WHERE admin=1").fetchone():
+                    fail(409,"Admin allaqachon mavjud")
+                cur=db.execute("INSERT INTO users(name,salt,password,admin) VALUES(?,?,?,?) RETURNING id",(name,salt,digest(data.password,salt),int(bool(data.admin_code))))
+                uid=cur.fetchone()["id"]
+                db.commit()
+        except (sqlite3.IntegrityError, psycopg.errors.UniqueViolation):
+            fail(409,"Bu username band")
+        session_cookie(response,uid,request)
+        return {"ok":True}
 
 @app.post("/api/login")
 def login(data:Credentials,request:Request,response:Response):
-    throttle("login:"+request.client.host,25,300)
-    with connect() as db:
-        row=db.execute("SELECT * FROM users WHERE name=?",(data.username.lower().strip(),)).fetchone()
-    if not row or row["banned"] or not hmac.compare_digest(digest(data.password,row["salt"]),row["password"]):
-        fail(401,"Username yoki parol xato")
-    session_cookie(response,row["id"],request)
-    return {"ok":True}
+    with classroom_auth("login:"+request.client.host,25,300):
+        with connect() as db:
+            row=db.execute("SELECT * FROM users WHERE name=?",(data.username.lower().strip(),)).fetchone()
+        if not row or row["banned"] or not hmac.compare_digest(digest(data.password,row["salt"]),row["password"]):
+            fail(401,"Username yoki parol xato")
+        session_cookie(response,row["id"],request)
+        return {"ok":True}
 
 @app.post("/api/logout")
 def logout(request:Request,response:Response):
