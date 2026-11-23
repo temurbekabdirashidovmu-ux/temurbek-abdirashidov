@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#113c3e">
   <meta name="description" content="SinfChat — sinfdoshlar uchun shaxsiy, real vaqtda ishlaydigan messenjer.">
   <title>SinfChat Online — Bizning sinf</title>
-  <link rel="stylesheet" href="/static/style.css?v=classroom5">
-  <script src="/static/app.js?v=classroom5" defer></script>
+  <link rel="stylesheet" href="/static/style.css?v=suhbat6">
+  <script src="/static/app.js?v=suhbat6" defer></script>
 </head>
 <body>
   <section class="auth-screen" id="authScreen">
@@ -63,6 +63,7 @@
         <button class="icon-btn back" id="backBtn" aria-label="Ortga">‹</button>
         <div class="chat-icon" id="chatAvatar">#</div>
         <div class="chat-info"><strong id="chatName">Bizning sinf</strong><span id="chatStatus">Sinfdoshlar guruhi</span></div>
+        <button class="icon-btn" id="findOpen" aria-label="Suhbatdan xabar qidirish" title="Suhbatdan xabar qidirish" aria-haspopup="dialog"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="m15 15 6 6"/></svg></button>
         <button class="online-count" id="showOnline" aria-haspopup="dialog">Ulanmoqda…</button>
         <button class="icon-btn" id="adminBtn" title="Administrator" hidden>⚙</button>
       </header>
@@ -71,6 +72,7 @@
       <section class="messages" id="messages" aria-live="polite"><div class="empty">Xabarlar yuklanmoqda...</div></section>
       <button id="jumpLatest" class="older" type="button" hidden></button>
       <div class="typing" id="typing"></div>
+      <div id="replyPreview" hidden><div><strong id="replyTo"></strong><span id="replyText"></span></div><button type="button" id="replyCancel" aria-label="Iqtibosni olib tashlash">×</button></div>
       <form id="messageForm" class="composer">
         <label class="icon-btn attach" for="imageInput" title="Rasm yuborish">＋</label>
         <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>
@@ -81,6 +83,12 @@
     </main>
   </div>
   <div id="toast" class="toast" role="status"></div>
+  <dialog id="findDialog" aria-labelledby="findTitle">
+    <div class="dialog-head"><strong id="findTitle">Xabar qidirish</strong><button type="button" id="findClose" aria-label="Yopish">×</button></div>
+    <form id="findForm"><input id="findQuery" type="search" aria-label="Qidiriladigan so‘z" placeholder="So‘z yoki ibora" maxlength="120" required><button class="primary" type="submit">Qidirish</button></form>
+    <p id="findStatus" role="status"></p><div id="findResults"></div>
+    <button type="button" class="archive-button" id="findMore" hidden>Oldingi xabarlardan izlash</button>
+  </dialog>
   <dialog id="archiveDialog" aria-labelledby="archiveTitle">
     <div class="dialog-head"><strong id="archiveTitle">Mening arxivim</strong><button id="archiveClose" aria-label="Yopish">×</button></div>
     <p class="form-note">Ko‘chirilgan suhbatlar faqat sizga ko‘rinadi. Eski server har bir suhbatning oxirgi 150 ta mavjud xabarini beradi.</p>

@@ -7,6 +7,96 @@ const drafts = new Map();
 let historyVersion = 0, pendingHistory = null, oldest = null, reconnectTimer;
 let rosterReady = false, legacyMode = false, importing = false;
 const sending = new Map();
+const quotes = new Map();
+let searchRun=null;
+
+function rememberQuote(id,quote){
+  if(quote)quotes.set(id,quote);else quotes.delete(id);
+  try {
+    if(quotes.size)sessionStorage.setItem(draftKey()+".quotes",JSON.stringify([...quotes]));
+    else sessionStorage.removeItem(draftKey()+".quotes");
+  } catch {}
+  showQuote();
+}
+function showQuote(){
+  const q=quotes.get(peer);
+  $("replyPreview").hidden=!q;
+  $("replyTo").textContent=q?"@"+q.name+" xabariga matnli javob":"";
+  $("replyText").textContent=q?.text||"";
+}
+function splitQuote(body){
+  const match=/^> (@[a-z][a-z0-9_]{2,23} · [^\n]+)\n([\s\S]+)$/.exec(body||"");
+  return match?{header:match[1],text:match[2]}:{text:body||""};
+}
+function quoteMessage(m){
+  const text=(m.body==="[voice]"?"Ovozli xabar":splitQuote(m.body).text||"Rasm").replace(/\s+/g," ").trim();
+  const chars=Array.from(text);
+  rememberQuote(peer,{name:m.username,text:chars.length>100?chars.slice(0,99).join("")+"…":text});
+  $("messageInput").focus();
+}
+$("replyCancel").onclick=()=>{rememberQuote(peer,null);$("messageInput").focus();};
+
+const normaliseSearch=value=>value.normalize("NFKC").toLowerCase().replace(/[’‘ʻʼ`]/g,"'");
+function stopSearch(){
+  searchRun?.controller.abort();
+  searchRun=null;
+}
+function clearSearch(){
+  stopSearch();
+  $("findResults").replaceChildren();$("findStatus").textContent="";
+  $("findMore").hidden=true;
+}
+$("findOpen").onclick=()=>{
+  clearSearch();$("findQuery").value="";
+  $("findTitle").textContent=$("chatName").textContent+" · Xabar qidirish";
+  $("findDialog").showModal();$("findQuery").focus();
+};
+$("findClose").onclick=()=>$("findDialog").close();
+$("findDialog").addEventListener("close",clearSearch);
+$("findQuery").oninput=clearSearch;
+function appendResult(m){
+  const row=document.createElement("article");row.dataset.id=m.id;
+  const author=document.createElement("strong");author.textContent="@"+m.username;
+  const stamp=document.createElement("small");stamp.textContent=new Date(m.sent).toLocaleString("uz-UZ");
+  const body=document.createElement("p");body.textContent=m.body;
+  const reply=document.createElement("button");reply.type="button";reply.className="archive-button";reply.textContent="Iqtibos bilan javob";
+  reply.onclick=()=>{$("findDialog").close();quoteMessage(m);};
+  row.append(author,stamp,body,reply);$("findResults").append(row);
+}
+async function searchPages(run){
+  if(!run || run.busy)return;
+  run.busy=true;$("findMore").hidden=true;$("findStatus").textContent="Izlanmoqda…";
+  try{
+    let added=0;
+    for(let page=0;page<4 && added<20;page++){
+      const url="/api/messages?peer="+run.room+(run.before?"&before="+run.before:"");
+      const rows=await api(url,{signal:run.controller.signal});
+      if(searchRun!==run || peer!==run.room)return;
+      for(const m of rows.slice().reverse()){
+        if(!run.deleted.has(m.id) && m.body && m.body!=="[voice]" && normaliseSearch(m.body).includes(run.term)){
+          appendResult(m);added++;
+        }
+      }
+      run.before=rows[0]?.id;run.more=rows.length===150;
+      if(!run.more)break;
+    }
+    const count=$("findResults").childElementCount;
+    $("findStatus").textContent=count?count+" ta xabar topildi.":(run.more?"Tekshirilgan xabarlarda topilmadi.":"Bu suhbatda mos xabar topilmadi.");
+  }catch(e){
+    if(searchRun!==run)return;
+    $("findStatus").textContent="Qidiruv to‘xtadi. Ulanishni tekshirib, yana urining.";
+    run.more=true;
+  }finally{
+    if(searchRun===run){run.busy=false;$("findMore").hidden=!run.more;}
+  }
+}
+$("findForm").onsubmit=e=>{
+  e.preventDefault();clearSearch();
+  const term=normaliseSearch($("findQuery").value.trim());if(!term)return;
+  searchRun={room:peer,term,before:null,controller:new AbortController(),deleted:new Set(),busy:false,more:true};
+  searchPages(searchRun);
+};
+$("findMore").onclick=()=>searchPages(searchRun);
 let newMessages = 0, historyFallback, reconnectAttempts = 0;
 
 function draftKey(){ return "sinfchat.drafts."+me.id; }
@@ -27,6 +117,7 @@ function finishSend(d){
   const entry=sending.get(d.room);
   if(!entry || entry.tag!==d.tag)return;
   sending.delete(d.room);
+  if(d.type==="saved" && entry.quote && quotes.get(d.room)===entry.quote)rememberQuote(d.room,null);
   if(d.type==="saved" && drafts.get(d.room)===entry.value){
     saveDraft(d.room,"");
     if(peer===d.room)$("messageInput").value="";
@@ -105,6 +196,12 @@ async function initialize(){
     for(const [id,value] of JSON.parse(sessionStorage.getItem(draftKey()) || "[]"))
       if(Number.isInteger(id) && typeof value==="string")drafts.set(id,value);
   } catch {}
+  quotes.clear();
+  try {
+    for(const [id,q] of JSON.parse(sessionStorage.getItem(draftKey()+".quotes")||"[]"))
+      if(Number.isInteger(id) && typeof q?.name==="string" && typeof q?.text==="string")quotes.set(id,q);
+  } catch {}
+  showQuote();
   $("messageInput").value=drafts.get(0)||"";
   updateComposer();
   auth.classList.add("hidden"); app.classList.remove("hidden");
@@ -171,10 +268,11 @@ $("backBtn").onclick=()=>app.classList.remove("chat-open");
 
 async function choose(id, openChat=true){
   if(id!==peer){
+    if($("findDialog").open)$("findDialog").close();
     drafts.set(peer,$("messageInput").value);
     $("messageInput").value=drafts.get(id)||"";
   }
-  peer=id; unread.delete(id);
+  peer=id; unread.delete(id);showQuote();
   newMessages=0; $("jumpLatest").hidden=true; updateComposer();
   $("groupUnread").textContent=unread.has(0)?"●":"";
   if(openChat)app.classList.add("chat-open");
@@ -259,7 +357,11 @@ function addMessage(m, scroll=true, target=messages){
     const sender=document.createElement("div");sender.className="sender";sender.textContent=m.username;bubble.append(sender);
   }
   if(m.body && m.body!=="[voice]"){
-    const p=document.createElement("p");p.textContent=m.body;bubble.append(p);
+    const parts=splitQuote(m.body);
+    if(parts.header){
+      const quote=document.createElement("blockquote");quote.textContent=parts.header;bubble.append(quote);
+    }
+    const p=document.createElement("p");p.textContent=parts.text;bubble.append(p);
   }
   if(m.media_id){
     if(m.body==="[voice]"){
@@ -273,7 +375,9 @@ function addMessage(m, scroll=true, target=messages){
   time.title=new Date(m.sent).toLocaleString("uz-UZ");
   const today=new Date().toDateString()===new Date(m.sent).toDateString();
   time.textContent=(today?"":new Date(m.sent).toLocaleDateString("uz-UZ",{day:"numeric",month:"short"})+" · ")+new Date(m.sent).toLocaleTimeString("uz-UZ",{hour:"2-digit",minute:"2-digit"});
-  meta.append(time);
+  const reply=document.createElement("button");reply.type="button";reply.textContent="Javob";
+  reply.onclick=()=>quoteMessage(m);
+  meta.append(time,reply);
   const action=document.createElement("button");
   action.textContent=m.sender===me.id?"O‘chirish":"Shikoyat";
   action.onclick=()=>m.sender===me.id?deleteMessage(m.id):reportMessage(m.id);
@@ -373,6 +477,14 @@ function openSocket(){
       return;
     }
     if(d.type==="deleted"){
+      if(searchRun){
+        searchRun.deleted.add(d.id);
+        const result=$("findResults").querySelector('[data-id="'+d.id+'"]');
+        if(result){
+          result.remove();
+          if(!searchRun.busy)$("findStatus").textContent=$("findResults").childElementCount+" ta xabar topildi.";
+        }
+      }
       if(pendingHistory)pendingHistory.push(d);else applyEvent(d);
       return;
     }
@@ -399,8 +511,11 @@ $("messageForm").addEventListener("submit", e=>{
   const tag=crypto.randomUUID();
   const value=$("messageInput").value;
   saveDraft(peer,value);
-  if(sendWS({type:"message",recipient:peer||null,body,tag})){
-    sending.set(peer,{tag,value});
+  const quote=quotes.get(peer);
+  const content=quote?"> @"+quote.name+" · "+quote.text+"\n"+body:body;
+  if(Array.from(content).length>2000){toast("Iqtibos bilan birga xabar 2000 belgidan oshdi.",true);return;}
+  if(sendWS({type:"message",recipient:peer||null,body:content,tag})){
+    sending.set(peer,{tag,value,quote});
     updateComposer();
   }
 });
@@ -440,7 +555,8 @@ $("micBtn").onclick=async()=>{
 };
 $("logoutBtn").onclick=async()=>{
   try{await api("/api/logout",{method:"POST",body:"{}"});}catch(e){toast("Chiqish amalga oshmadi. Qayta urining.",true);return;}
-  try{sessionStorage.removeItem(draftKey());}catch{}
+  clearSearch();$("findDialog").close();quotes.clear();showQuote();
+  try{sessionStorage.removeItem(draftKey());sessionStorage.removeItem(draftKey()+".quotes");}catch{}
   if(recorder?.state==="recording"){recorder.stop();$("micBtn").textContent="🎙";}
   if(ws){ws.onclose=null;ws.close();ws=null;}
   clearTimeout(reconnectTimer);
