@@ -41,7 +41,8 @@ form.addEventListener('submit', async event => {
       password.value = '';
       visibility.checked = false;
       password.type = 'password';
-      location.reload();
+      if (location.pathname === '/') location.replace('/index.html');
+      else location.reload();
       return;
     }
     message.textContent = result?.error || 'Kabinet hozir javob bermayapti. Qayta urinib ko‘ring.';
