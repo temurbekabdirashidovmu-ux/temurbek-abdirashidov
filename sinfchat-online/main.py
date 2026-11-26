@@ -120,8 +120,12 @@ async def security(request, call_next):
     return response
 
 @app.get("/")
-def index():
-    return FileResponse(HERE/"static"/"index.html")
+def index(request: Request):
+    response = FileResponse(HERE/"static"/"index.html", headers={"Cache-Control": "private, no-store"})
+    # Fresh home navigation always starts at the existing sign-in form.
+    https = request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "").startswith("https")
+    response.delete_cookie("sinfchat_session", path="/", httponly=True, secure=https, samesite="lax")
+    return response
 
 @app.get("/static/app.js")
 def js():
